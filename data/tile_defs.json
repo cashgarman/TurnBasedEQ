@@ -1,9 +1,27 @@
 [
   {"id": "grass", "category": "grass", "collision": "walkable", "animation": "cycle", "autotileGroup": "grass"},
+  {"id": "grass_flowers", "category": "grass", "collision": "walkable", "animation": "cycle", "autotileGroup": "grass"},
   {"id": "dirt", "category": "dirt", "collision": "walkable", "animation": "none", "autotileGroup": "dirt"},
+  {"id": "mud", "category": "dirt", "collision": "walkable", "animation": "none", "autotileGroup": "dirt"},
+  {"id": "sand", "category": "sand", "collision": "walkable", "animation": "none", "autotileGroup": "sand"},
   {"id": "shallow_water", "category": "water", "collision": "water", "animation": "cycle", "autotileGroup": "water"},
+  {"id": "deep_water", "category": "water", "collision": "water", "animation": "cycle", "autotileGroup": "water"},
   {"id": "stone_floor", "category": "stone", "collision": "walkable", "animation": "none", "autotileGroup": "stone"},
   {"id": "stone_wall", "category": "stone", "collision": "blocked", "animation": "none", "autotileGroup": "wall"},
+  {"id": "brick", "category": "stone", "collision": "blocked", "animation": "none", "autotileGroup": "wall"},
+  {"id": "wood_plank", "category": "wood", "collision": "walkable", "animation": "none", "autotileGroup": "wood"},
   {"id": "cobble", "category": "cobble", "collision": "walkable", "animation": "none", "autotileGroup": "cobble"},
-  {"id": "portal_pad", "category": "portal", "collision": "walkable", "animation": "cycle", "autotileGroup": "portal"}
+  {"id": "swamp", "category": "swamp", "collision": "walkable", "animation": "cycle", "autotileGroup": "swamp"},
+  {"id": "lava", "category": "lava", "collision": "blocked", "animation": "cycle", "autotileGroup": "lava"},
+  {"id": "ice", "category": "ice", "collision": "walkable", "animation": "none", "autotileGroup": "ice"},
+  {"id": "snow", "category": "snow", "collision": "walkable", "animation": "none", "autotileGroup": "snow"},
+  {"id": "portal_pad", "category": "portal", "collision": "walkable", "animation": "cycle", "autotileGroup": "portal"},
+  {"id": "tree_canopy", "category": "grass", "collision": "blocked", "animation": "none", "autotileGroup": "grass"},
+  {"id": "bush", "category": "grass", "collision": "walkable", "animation": "none", "autotileGroup": "grass"},
+  {"id": "fence", "category": "wood", "collision": "blocked", "animation": "none", "autotileGroup": "wood"},
+  {"id": "door", "category": "wood", "collision": "walkable", "animation": "none", "autotileGroup": "wood"},
+  {"id": "stairs_up", "category": "stone", "collision": "walkable", "animation": "none", "autotileGroup": "stone"},
+  {"id": "stairs_down", "category": "stone", "collision": "walkable", "animation": "none", "autotileGroup": "stone"},
+  {"id": "carpet", "category": "cobble", "collision": "walkable", "animation": "none", "autotileGroup": "cobble"},
+  {"id": "pit", "category": "stone", "collision": "blocked", "animation": "none", "autotileGroup": "stone"}
 ]

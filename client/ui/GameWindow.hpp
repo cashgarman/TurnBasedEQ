@@ -31,12 +31,19 @@ public:
 
     void applyState(const GameWindowState& state);
     void clampToDisplay(int displayWidth, int displayHeight);
+    bool syncFromImGui();
 
-private:
     GameWindowState state_;
     float minWidth_;
     float minHeight_;
+    int displayWidth_ = 0;
+    int displayHeight_ = 0;
     bool open_ = true;
+    bool pendingLayoutApply_ = true;
+    bool firstUseApplied_ = false;
 };
+
+// Call immediately after ImGui::NewFrame() to clamp active title-bar drags before shell windows begin.
+void constrainActiveImGuiWindowDrag(int displayWidth, int displayHeight);
 
 } // namespace tbeq::ui

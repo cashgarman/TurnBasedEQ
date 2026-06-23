@@ -43,6 +43,10 @@ void LogViewer::draw()
 
     const std::string filterText = filter_;
     ImGui::BeginChild("LogScroll", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
+    if (cachedLines_.empty())
+    {
+        ImGui::TextDisabled("No log entries yet. Startup messages appear here after launch.");
+    }
     for (const auto& line : cachedLines_)
     {
         if (!filterText.empty() && line.find(filterText) == std::string::npos)

@@ -20,6 +20,10 @@ vcpkg_installed/
 Testing/
 *.log
 assets/cache/
+logs/
+imgui.ini
 config/ui_layout.json
+config/tbeq.db
+config/tbeq.db-*
 third_party/cache/
 third_party/imgui-src/

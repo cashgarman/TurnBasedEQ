@@ -1,4 +1,5 @@
 #include "TestCluster.hpp"
+#include "TempDatabase.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -74,6 +75,22 @@ bool ProcessHandle::valid() const
 #endif
 }
 
+bool ProcessHandle::isRunning() const
+{
+#ifdef _WIN32
+    if (processHandle_ == nullptr)
+    {
+        return false;
+    }
+
+    auto* handle = static_cast<HANDLE>(processHandle_);
+    const DWORD waitResult = WaitForSingleObject(handle, 0);
+    return waitResult == WAIT_TIMEOUT;
+#else
+    return false;
+#endif
+}
+
 void ProcessHandle::terminateProcess()
 {
 #ifdef _WIN32
@@ -139,7 +156,7 @@ ProcessHandle TestCluster::spawnProcess(const std::vector<std::string>& args, co
 #endif
 }
 
-TestCluster::TestCluster()
+TestCluster::TestCluster(const std::filesystem::path& dbPath)
     : repoRoot_(findRepoRoot())
     , worldLoginExe_(repoRoot_ / "build" / "server" / "Debug" / "tbeq_world_login.exe")
     , zoneServerExe_(repoRoot_ / "build" / "server" / "Debug" / "tbeq_zone_server.exe")
@@ -150,13 +167,31 @@ TestCluster::TestCluster()
         zoneServerExe_ = repoRoot_ / "build" / "server" / "Release" / "tbeq_zone_server.exe";
     }
 
+    if (dbPath.empty())
+    {
+        ownedDatabase_ = std::make_unique<TempDatabase>();
+        ownedDatabase_->generateWorld(42);
+        dbPath_ = ownedDatabase_->path();
+    }
+    else
+    {
+        dbPath_ = dbPath;
+    }
+
     worldLoginPort_ = pickEphemeralPort();
+    worldLoginClientPort_ = pickEphemeralPort();
 
     std::vector<std::string> args = {
         worldLoginExe_.string(),
         "--dev-mode",
         "--port",
         std::to_string(worldLoginPort_),
+        "--world-login-client-port",
+        std::to_string(worldLoginClientPort_),
+        "--db-path",
+        dbPath_.string(),
+        "--data-root",
+        (repoRoot_ / "data").string(),
     };
 
     worldLoginProcess_ = spawnProcess(args, repoRoot_);
@@ -169,6 +204,16 @@ TestCluster::~TestCluster()
 
 bool TestCluster::waitForWorldLoginReady(std::chrono::milliseconds timeout) const
 {
+    return waitForTcpPort(worldLoginPort_, timeout);
+}
+
+bool TestCluster::waitForWorldLoginClientReady(std::chrono::milliseconds timeout) const
+{
+    return waitForTcpPort(worldLoginClientPort_, timeout);
+}
+
+bool TestCluster::waitForTcpPort(uint16_t port, std::chrono::milliseconds timeout) const
+{
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline)
     {
@@ -176,7 +221,7 @@ bool TestCluster::waitForWorldLoginReady(std::chrono::milliseconds timeout) cons
         {
             asio::io_context io;
             asio::ip::tcp::socket socket(io);
-            asio::ip::tcp::endpoint endpoint(asio::ip::make_address("127.0.0.1"), worldLoginPort_);
+            asio::ip::tcp::endpoint endpoint(asio::ip::make_address("127.0.0.1"), port);
             socket.connect(endpoint);
             return true;
         }
@@ -201,10 +246,25 @@ bool TestCluster::startZoneServer(const std::string& zoneId, uint16_t clientPort
         std::to_string(worldLoginPort_),
         "--client-port",
         std::to_string(clientPort),
+        "--db-path",
+        dbPath_.string(),
+        "--data-root",
+        (repoRoot_ / "data").string(),
     };
 
     outProcess = spawnProcess(args, repoRoot_);
-    return outProcess.valid();
+    if (!outProcess.valid())
+    {
+        return false;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (!outProcess.isRunning())
+    {
+        return false;
+    }
+
+    return waitForTcpPort(clientPort, std::chrono::seconds(8));
 }
 
 } // namespace tbeq::test

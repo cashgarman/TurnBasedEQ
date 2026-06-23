@@ -18,6 +18,8 @@ void HeadlessClient::connect(const std::string& host, uint16_t port)
     asio::ip::tcp::resolver resolver(io_);
     auto endpoints = resolver.resolve(host, std::to_string(port));
     asio::connect(socket_, endpoints);
+    std::error_code ec;
+    socket_.non_blocking(true, ec);
 }
 
 void HeadlessClient::close()
@@ -32,6 +34,23 @@ void HeadlessClient::sendServerPacket(net::ServerPacketType type, uint32_t seque
     const auto encoded = net::encodePacket(packet);
     asio::write(socket_, asio::buffer(encoded));
     (void)nextSequence_;
+}
+
+void HeadlessClient::sendClientPacket(
+    net::ClientPacketType type,
+    uint32_t sequenceId,
+    const net::ByteWriter& payloadWriter,
+    uint64_t sessionTokenHash)
+{
+    auto packet = net::serializeClientPacket(type, sequenceId, payloadWriter);
+    packet.header.sessionTokenHash = sessionTokenHash;
+    const auto encoded = net::encodePacket(packet);
+    asio::write(socket_, asio::buffer(encoded));
+}
+
+std::optional<net::SerializedPacket> HeadlessClient::readClientPacket(std::chrono::milliseconds timeout)
+{
+    return readServerPacket(timeout);
 }
 
 std::optional<net::SerializedPacket> HeadlessClient::readServerPacket(std::chrono::milliseconds timeout)
@@ -76,9 +95,18 @@ bool HeadlessClient::readExact(std::size_t size, std::vector<uint8_t>& buffer, s
 
         std::error_code ec;
         const std::size_t bytes = socket_.read_some(asio::buffer(buffer.data() + read, size - read), ec);
+        if (ec == asio::error::would_block || ec == asio::error::try_again)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
         if (ec)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return false;
+        }
+        if (bytes == 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
         }
         read += bytes;

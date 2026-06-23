@@ -18,17 +18,36 @@ void TcpConnection::start()
 
 void TcpConnection::send(const net::SerializedPacket& packet)
 {
+    writeQueue_.push_back(net::encodePacket(packet));
+    if (!writing_)
+    {
+        doWrite();
+    }
+}
+
+void TcpConnection::doWrite()
+{
+    if (closed_ || writeQueue_.empty())
+    {
+        writing_ = false;
+        return;
+    }
+
+    writing_ = true;
     auto self = shared_from_this();
-    writeBuffer_ = net::encodePacket(packet);
     asio::async_write(
         socket_,
-        asio::buffer(writeBuffer_),
+        asio::buffer(writeQueue_.front()),
         [self](const std::error_code& ec, std::size_t)
         {
             if (ec)
             {
                 self->handleError(ec, "write");
+                return;
             }
+
+            self->writeQueue_.pop_front();
+            self->doWrite();
         });
 }
 
@@ -39,6 +58,8 @@ void TcpConnection::close()
         return;
     }
     closed_ = true;
+    writing_ = false;
+    writeQueue_.clear();
     std::error_code ec;
     socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
     socket_.close(ec);
@@ -111,6 +132,8 @@ void TcpConnection::handleError(const std::error_code& ec, const char* where)
     {
         spdlog::debug("TcpConnection {} error: {}", where, ec.message());
     }
+    writing_ = false;
+    writeQueue_.clear();
     close();
 }
 

@@ -34,7 +34,7 @@ TEST_CASE("UI layout save/load round-trip", "[ui]")
     std::filesystem::remove(tempPath);
 }
 
-TEST_CASE("GameWindow clamp keeps half window visible", "[ui]")
+TEST_CASE("GameWindow clamp keeps window inside display", "[ui]")
 {
     tbeq::ui::GameWindow window("hud", "HUD", 200.0f, 60.0f);
     window.state().x = -500.0f;
@@ -43,6 +43,23 @@ TEST_CASE("GameWindow clamp keeps half window visible", "[ui]")
     window.state().height = 80.0f;
 
     window.clampToDisplay(1280, 720);
-    REQUIRE(window.state().x >= -120.0f);
-    REQUIRE(window.state().y >= 0.0f);
+    REQUIRE(window.state().x == 0.0f);
+    REQUIRE(window.state().y == 0.0f);
+    REQUIRE(window.state().x + window.state().width <= 1280.0f);
+    REQUIRE(window.state().y + window.state().height <= 720.0f);
+}
+
+TEST_CASE("GameWindow clamp keeps overflow position inside display", "[ui]")
+{
+    tbeq::ui::GameWindow window("chat", "Chat", 320.0f, 180.0f);
+    window.state().x = 1200.0f;
+    window.state().y = 700.0f;
+    window.state().width = 360.0f;
+    window.state().height = 200.0f;
+
+    window.clampToDisplay(1280, 720);
+    REQUIRE(window.state().x == 920.0f);
+    REQUIRE(window.state().y == 520.0f);
+    REQUIRE(window.state().x + window.state().width <= 1280.0f);
+    REQUIRE(window.state().y + window.state().height <= 720.0f);
 }

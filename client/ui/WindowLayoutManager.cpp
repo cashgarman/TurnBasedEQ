@@ -92,7 +92,11 @@ void WindowLayoutManager::load()
 {
     if (!std::filesystem::exists(layoutPath_))
     {
-        spdlog::info("No UI layout file at {}; using defaults", layoutPath_.string());
+        spdlog::info("No UI layout file at {}; applying default window layout", layoutPath_.string());
+        for (auto& [id, window] : windows_)
+        {
+            window->applyState(defaultState(id));
+        }
         return;
     }
 
@@ -116,6 +120,8 @@ void WindowLayoutManager::load()
         }
         it->second->applyState(jsonToState(entry, id));
     }
+
+    spdlog::info("Loaded UI layout from {}", layoutPath_.string());
 }
 
 void WindowLayoutManager::save() const
@@ -134,6 +140,7 @@ void WindowLayoutManager::save() const
 
     std::ofstream output(layoutPath_);
     output << root.dump(2);
+    spdlog::info("Saved UI layout to {}", layoutPath_.string());
 }
 
 void WindowLayoutManager::resetToDefaults()

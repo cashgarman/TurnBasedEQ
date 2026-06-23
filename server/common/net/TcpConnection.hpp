@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <span>
 #include <vector>
@@ -26,13 +27,15 @@ public:
 private:
     void readHeader();
     void readPayload();
+    void doWrite();
     void handleError(const std::error_code& ec, const char* where);
 
     asio::ip::tcp::socket socket_;
     PacketHandler handler_;
     net::PacketHeader readHeader_;
     std::vector<uint8_t> readBuffer_;
-    std::vector<uint8_t> writeBuffer_;
+    std::deque<std::vector<uint8_t>> writeQueue_;
+    bool writing_ = false;
     bool closed_ = false;
 };
 

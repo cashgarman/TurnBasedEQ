@@ -32,6 +32,11 @@ void ByteWriter::writeU64(uint64_t value)
     appendRaw(buffer_, &value, sizeof(value));
 }
 
+void ByteWriter::writeF32(float value)
+{
+    appendRaw(buffer_, &value, sizeof(value));
+}
+
 void ByteWriter::writeBool(bool value)
 {
     writeU8(value ? 1 : 0);
@@ -96,6 +101,17 @@ bool ByteReader::readU32(uint32_t& out)
 }
 
 bool ByteReader::readU64(uint64_t& out)
+{
+    if (offset_ + sizeof(out) > data_.size())
+    {
+        return false;
+    }
+    std::memcpy(&out, data_.data() + offset_, sizeof(out));
+    offset_ += sizeof(out);
+    return true;
+}
+
+bool ByteReader::readF32(float& out)
 {
     if (offset_ + sizeof(out) > data_.size())
     {
@@ -184,6 +200,236 @@ ByteWriter serialize(const ClientPongPayload& payload)
     return writer;
 }
 
+ByteWriter serialize(const LoginRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.username);
+    writer.writeString(payload.password);
+    return writer;
+}
+
+ByteWriter serialize(const LoginResponsePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeU64(payload.sessionToken);
+    writer.writeU64(payload.sessionTokenHash);
+    return writer;
+}
+
+ByteWriter serialize(const CreateAccountRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.username);
+    writer.writeString(payload.password);
+    return writer;
+}
+
+ByteWriter serialize(const CreateAccountResponsePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const CharacterListRequestPayload& payload)
+{
+    (void)payload;
+    return ByteWriter{};
+}
+
+ByteWriter serialize(const CharacterSummaryPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    writer.writeString(payload.name);
+    writer.writeString(payload.raceId);
+    writer.writeString(payload.classId);
+    writer.writeU16(payload.level);
+    writer.writeString(payload.zoneId);
+    return writer;
+}
+
+ByteWriter serialize(const CharacterListResponsePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeU32(static_cast<uint32_t>(payload.characters.size()));
+    for (const auto& character : payload.characters)
+    {
+        writer.writeString(character.characterId);
+        writer.writeString(character.name);
+        writer.writeString(character.raceId);
+        writer.writeString(character.classId);
+        writer.writeU16(character.level);
+        writer.writeString(character.zoneId);
+    }
+    return writer;
+}
+
+ByteWriter serialize(const CreateCharacterRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.name);
+    writer.writeString(payload.raceId);
+    writer.writeString(payload.classId);
+    return writer;
+}
+
+ByteWriter serialize(const CreateCharacterResponsePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
+ByteWriter serialize(const SelectCharacterRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
+ByteWriter serialize(const ZoneConnectInfoPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeString(payload.zoneId);
+    writer.writeString(payload.zoneHost);
+    writer.writeU16(payload.zonePort);
+    writer.writeU64(payload.sessionResumeToken);
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
+ByteWriter serialize(const SessionResumePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    writer.writeU64(payload.sessionResumeToken);
+    return writer;
+}
+
+ByteWriter serialize(const SessionResumeResponsePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeU32(payload.entityId);
+    writer.writeU32(static_cast<uint32_t>(payload.tileX));
+    writer.writeU32(static_cast<uint32_t>(payload.tileY));
+    return writer;
+}
+
+ByteWriter serialize(const ZoneSnapshotPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.zoneId);
+    writer.writeString(payload.zoneName);
+    writer.writeString(payload.tileStyle);
+    writer.writeU32(static_cast<uint32_t>(payload.width));
+    writer.writeU32(static_cast<uint32_t>(payload.height));
+    writer.writeStringVector(payload.tiles);
+    return writer;
+}
+
+ByteWriter serialize(const EntityStatePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.entityId);
+    writer.writeString(payload.name);
+    writer.writeU8(payload.entityType);
+    writer.writeU32(static_cast<uint32_t>(payload.tileX));
+    writer.writeU32(static_cast<uint32_t>(payload.tileY));
+    return writer;
+}
+
+ByteWriter serialize(const EntitySnapshotPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(static_cast<uint32_t>(payload.entities.size()));
+    for (const auto& entity : payload.entities)
+    {
+        const auto entityWriter = serialize(entity);
+        writer.writeU32(static_cast<uint32_t>(entityWriter.data().size()));
+        for (uint8_t byte : entityWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    return writer;
+}
+
+ByteWriter serialize(const MoveIntentPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(static_cast<uint32_t>(payload.targetTileX));
+    writer.writeU32(static_cast<uint32_t>(payload.targetTileY));
+    return writer;
+}
+
+ByteWriter serialize(const MoveResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeU32(payload.entityId);
+    writer.writeU32(static_cast<uint32_t>(payload.tileX));
+    writer.writeU32(static_cast<uint32_t>(payload.tileY));
+    return writer;
+}
+
+ByteWriter serialize(const ChatMessagePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU8(payload.channel);
+    writer.writeString(payload.text);
+    return writer;
+}
+
+ByteWriter serialize(const ChatDeliverPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU8(payload.channel);
+    writer.writeString(payload.senderName);
+    writer.writeString(payload.text);
+    return writer;
+}
+
+ByteWriter serialize(const UsePortalPayload& payload)
+{
+    (void)payload;
+    return ByteWriter{};
+}
+
+ByteWriter serialize(const UsePortalResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const RequestZoneTilesPayload& payload)
+{
+    (void)payload;
+    return ByteWriter{};
+}
+
+ByteWriter serialize(const ZoneTileGridPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.zoneId);
+    writer.writeStringVector(payload.tiles);
+    return writer;
+}
+
 ByteWriter serialize(const DebugCommandRequestPayload& payload)
 {
     ByteWriter writer;
@@ -233,6 +479,98 @@ ByteWriter serialize(const ZoneRegisterAckPayload& payload)
     return writer;
 }
 
+ByteWriter serialize(const PlayerEnterPreparePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    writer.writeU64(static_cast<uint64_t>(payload.accountId));
+    writer.writeString(payload.zoneId);
+    writer.writeU64(payload.sessionResumeToken);
+    return writer;
+}
+
+ByteWriter serialize(const PlayerEnterReadyPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const LoadCharacterRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
+ByteWriter serialize(const LoadCharacterResponsePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeString(payload.characterId);
+    writer.writeString(payload.name);
+    writer.writeString(payload.raceId);
+    writer.writeString(payload.classId);
+    writer.writeU16(payload.level);
+    writer.writeString(payload.zoneId);
+    writer.writeF32(payload.posX);
+    writer.writeF32(payload.posY);
+    writer.writeString(payload.stateJson);
+    return writer;
+}
+
+ByteWriter serialize(const ZoneTransferRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    writer.writeString(payload.sourceZoneId);
+    writer.writeString(payload.destZoneId);
+    writer.writeU32(static_cast<uint32_t>(payload.destTileX));
+    writer.writeU32(static_cast<uint32_t>(payload.destTileY));
+    writer.writeU64(payload.sessionResumeToken);
+    return writer;
+}
+
+ByteWriter serialize(const ZoneTransferAuthorizePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
+ByteWriter serialize(const ZoneTransferCompletePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    writer.writeString(payload.zoneId);
+    writer.writeF32(payload.posX);
+    writer.writeF32(payload.posY);
+    return writer;
+}
+
+ByteWriter serialize(const PlayerDisconnectPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
+ByteWriter serialize(const ZoneConnectForwardPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeString(payload.zoneId);
+    writer.writeString(payload.zoneHost);
+    writer.writeU16(payload.zonePort);
+    writer.writeU64(payload.sessionResumeToken);
+    writer.writeString(payload.characterId);
+    return writer;
+}
+
 bool deserializeClientPacket(const SerializedPacket& packet, ClientPingPayload& out)
 {
     if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::Ping))
@@ -251,6 +589,355 @@ bool deserializeClientPacket(const SerializedPacket& packet, ClientPongPayload& 
     }
     ByteReader reader(packet.payload);
     return reader.readU64(out.timestampMs);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, LoginRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::LoginRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.username) && reader.readString(out.password);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, LoginResponsePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::LoginResponse))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok)
+        && reader.readString(out.message)
+        && reader.readU64(out.sessionToken)
+        && reader.readU64(out.sessionTokenHash);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CreateAccountRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CreateAccountRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.username) && reader.readString(out.password);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CreateAccountResponsePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CreateAccountResponse))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CharacterListRequestPayload& out)
+{
+    (void)out;
+    return packet.header.packetType == static_cast<uint16_t>(ClientPacketType::CharacterListRequest);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CharacterListResponsePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CharacterListResponse))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t count = 0;
+    if (!reader.readBool(out.ok) || !reader.readString(out.message) || !reader.readU32(count))
+    {
+        return false;
+    }
+
+    out.characters.clear();
+    out.characters.reserve(count);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        CharacterSummaryPayload character;
+        if (!reader.readString(character.characterId)
+            || !reader.readString(character.name)
+            || !reader.readString(character.raceId)
+            || !reader.readString(character.classId)
+            || !reader.readU16(character.level)
+            || !reader.readString(character.zoneId))
+        {
+            return false;
+        }
+        out.characters.push_back(std::move(character));
+    }
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CreateCharacterRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CreateCharacterRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.name)
+        && reader.readString(out.raceId)
+        && reader.readString(out.classId);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CreateCharacterResponsePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CreateCharacterResponse))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok)
+        && reader.readString(out.message)
+        && reader.readString(out.characterId);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SelectCharacterRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SelectCharacterRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, ZoneConnectInfoPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::ZoneConnectInfo))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok)
+        && reader.readString(out.message)
+        && reader.readString(out.zoneId)
+        && reader.readString(out.zoneHost)
+        && reader.readU16(out.zonePort)
+        && reader.readU64(out.sessionResumeToken)
+        && reader.readString(out.characterId);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SessionResumePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SessionResume))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId) && reader.readU64(out.sessionResumeToken);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SessionResumeResponsePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SessionResumeResponse))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t tileX = 0;
+    uint32_t tileY = 0;
+    if (!reader.readBool(out.ok) || !reader.readString(out.message))
+    {
+        return false;
+    }
+    if (!reader.readU32(out.entityId))
+    {
+        out.entityId = 0;
+        out.tileX = 0;
+        out.tileY = 0;
+        return true;
+    }
+    if (!reader.readU32(tileX) || !reader.readU32(tileY))
+    {
+        return false;
+    }
+    out.tileX = static_cast<int32_t>(tileX);
+    out.tileY = static_cast<int32_t>(tileY);
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, ZoneSnapshotPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::ZoneSnapshot))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!reader.readString(out.zoneId)
+        || !reader.readString(out.zoneName)
+        || !reader.readString(out.tileStyle)
+        || !reader.readU32(width)
+        || !reader.readU32(height)
+        || !reader.readStringVector(out.tiles))
+    {
+        return false;
+    }
+    out.width = static_cast<int32_t>(width);
+    out.height = static_cast<int32_t>(height);
+    return true;
+}
+
+bool deserializeEntityState(ByteReader& reader, EntityStatePayload& out)
+{
+    uint32_t tileX = 0;
+    uint32_t tileY = 0;
+    if (!reader.readU32(out.entityId)
+        || !reader.readString(out.name)
+        || !reader.readU8(out.entityType)
+        || !reader.readU32(tileX)
+        || !reader.readU32(tileY))
+    {
+        return false;
+    }
+    out.tileX = static_cast<int32_t>(tileX);
+    out.tileY = static_cast<int32_t>(tileY);
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, EntitySnapshotPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::EntitySnapshot))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t count = 0;
+    if (!reader.readU32(count))
+    {
+        return false;
+    }
+
+    out.entities.clear();
+    out.entities.reserve(count);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        uint32_t entitySize = 0;
+        if (!reader.readU32(entitySize))
+        {
+            return false;
+        }
+        const std::size_t offset = reader.hasRemaining() ? 0 : 0;
+        (void)offset;
+        std::vector<uint8_t> entityBytes(entitySize);
+        for (uint32_t b = 0; b < entitySize; ++b)
+        {
+            uint8_t byte = 0;
+            if (!reader.readU8(byte))
+            {
+                return false;
+            }
+            entityBytes[b] = byte;
+        }
+        ByteReader entityReader(entityBytes);
+        EntityStatePayload entity;
+        if (!deserializeEntityState(entityReader, entity))
+        {
+            return false;
+        }
+        out.entities.push_back(std::move(entity));
+    }
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MoveIntentPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MoveIntent))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t tileX = 0;
+    uint32_t tileY = 0;
+    if (!reader.readU32(tileX) || !reader.readU32(tileY))
+    {
+        return false;
+    }
+    out.targetTileX = static_cast<int32_t>(tileX);
+    out.targetTileY = static_cast<int32_t>(tileY);
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MoveResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MoveResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t tileX = 0;
+    uint32_t tileY = 0;
+    if (!reader.readBool(out.ok)
+        || !reader.readString(out.message)
+        || !reader.readU32(out.entityId)
+        || !reader.readU32(tileX)
+        || !reader.readU32(tileY))
+    {
+        return false;
+    }
+    out.tileX = static_cast<int32_t>(tileX);
+    out.tileY = static_cast<int32_t>(tileY);
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, ChatMessagePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::ChatMessage))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readU8(out.channel) && reader.readString(out.text);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, ChatDeliverPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::ChatDeliver))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readU8(out.channel)
+        && reader.readString(out.senderName)
+        && reader.readString(out.text);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, UsePortalPayload& out)
+{
+    (void)out;
+    return packet.header.packetType == static_cast<uint16_t>(ClientPacketType::UsePortal);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, UsePortalResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::UsePortalResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, RequestZoneTilesPayload& out)
+{
+    (void)out;
+    return packet.header.packetType == static_cast<uint16_t>(ClientPacketType::RequestZoneTiles);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::ZoneTileGrid))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.zoneId) && reader.readStringVector(out.tiles);
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandRequestPayload& out)
@@ -321,6 +1008,139 @@ bool deserializeServerPacket(const SerializedPacket& packet, ZoneRegisterAckPayl
     }
     ByteReader reader(packet.payload);
     return reader.readBool(out.accepted) && reader.readString(out.message);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, PlayerEnterPreparePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::PlayerEnterPrepare))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint64_t accountId = 0;
+    if (!reader.readString(out.characterId)
+        || !reader.readU64(accountId)
+        || !reader.readString(out.zoneId)
+        || !reader.readU64(out.sessionResumeToken))
+    {
+        return false;
+    }
+    out.accountId = static_cast<int64_t>(accountId);
+    return true;
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, PlayerEnterReadyPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::PlayerEnterReady))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId)
+        && reader.readBool(out.ok)
+        && reader.readString(out.message);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, LoadCharacterRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::LoadCharacterRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, LoadCharacterResponsePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::LoadCharacterResponse))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok)
+        && reader.readString(out.message)
+        && reader.readString(out.characterId)
+        && reader.readString(out.name)
+        && reader.readString(out.raceId)
+        && reader.readString(out.classId)
+        && reader.readU16(out.level)
+        && reader.readString(out.zoneId)
+        && reader.readF32(out.posX)
+        && reader.readF32(out.posY)
+        && reader.readString(out.stateJson);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, ZoneTransferRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::ZoneTransferRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t destX = 0;
+    uint32_t destY = 0;
+    if (!reader.readString(out.characterId)
+        || !reader.readString(out.sourceZoneId)
+        || !reader.readString(out.destZoneId)
+        || !reader.readU32(destX)
+        || !reader.readU32(destY)
+        || !reader.readU64(out.sessionResumeToken))
+    {
+        return false;
+    }
+    out.destTileX = static_cast<int32_t>(destX);
+    out.destTileY = static_cast<int32_t>(destY);
+    return true;
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, ZoneTransferAuthorizePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::ZoneTransferAuthorize))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, ZoneTransferCompletePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::ZoneTransferComplete))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId)
+        && reader.readString(out.zoneId)
+        && reader.readF32(out.posX)
+        && reader.readF32(out.posY);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, PlayerDisconnectPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::PlayerDisconnect))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.characterId);
+}
+
+bool deserializeServerPacket(const SerializedPacket& packet, ZoneConnectForwardPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ServerPacketType::ZoneConnectForward))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok)
+        && reader.readString(out.message)
+        && reader.readString(out.zoneId)
+        && reader.readString(out.zoneHost)
+        && reader.readU16(out.zonePort)
+        && reader.readU64(out.sessionResumeToken)
+        && reader.readString(out.characterId);
 }
 
 bool deserializeServerPacket(const SerializedPacket& packet, ServerDebugCommandRequestPayload& out)

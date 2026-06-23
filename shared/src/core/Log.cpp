@@ -1,10 +1,12 @@
 #include "tbeq/core/Log.hpp"
 
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <vector>
 
 #include <spdlog/sinks/base_sink.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 namespace tbeq
@@ -60,12 +62,24 @@ void initLogging(const std::string& processName)
     auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     g_ringSink = std::make_shared<RingBufferSink>();
 
-    g_logger = std::make_shared<spdlog::logger>(
-        processName,
-        spdlog::sinks_init_list{consoleSink, g_ringSink});
+    spdlog::sinks_init_list sinks{consoleSink, g_ringSink};
+
+    try
+    {
+        std::filesystem::create_directories("logs");
+        const auto logPath = std::filesystem::path("logs") / (processName + ".log");
+        auto fileSink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
+        g_logger = std::make_shared<spdlog::logger>(processName, spdlog::sinks_init_list{consoleSink, g_ringSink, fileSink});
+    }
+    catch (const spdlog::spdlog_ex&)
+    {
+        g_logger = std::make_shared<spdlog::logger>(processName, sinks);
+    }
+
     g_logger->set_level(spdlog::level::trace);
     g_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] %v");
     spdlog::set_default_logger(g_logger);
+    spdlog::info("Logging to logs/{}.log", processName);
 }
 
 std::shared_ptr<spdlog::logger> getLogger()

@@ -25,6 +25,13 @@ public:
     void sendServerPacket(net::ServerPacketType type, uint32_t sequenceId, const net::ByteWriter& payloadWriter);
     std::optional<net::SerializedPacket> readServerPacket(std::chrono::milliseconds timeout);
 
+    void sendClientPacket(
+        net::ClientPacketType type,
+        uint32_t sequenceId,
+        const net::ByteWriter& payloadWriter,
+        uint64_t sessionTokenHash = 0);
+    std::optional<net::SerializedPacket> readClientPacket(std::chrono::milliseconds timeout);
+
 private:
     bool readExact(std::size_t size, std::vector<uint8_t>& buffer, std::chrono::milliseconds timeout);
 

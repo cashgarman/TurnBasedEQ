@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 add_library(tbeq_test_helpers
     helpers/TestCluster.cpp
     helpers/HeadlessClient.cpp
+    helpers/TempDatabase.cpp
 )
 
 target_include_directories(tbeq_test_helpers
@@ -29,6 +30,10 @@ add_executable(tbeq_tests_unit
     unit/net/packet_roundtrip_test.cpp
     unit/server/debug_command_test.cpp
     unit/ui/ui_layout_test.cpp
+    unit/auth/auth_test.cpp
+    unit/worldgen/world_validator_test.cpp
+    unit/world/collision_test.cpp
+    unit/render/tile_generator_test.cpp
 )
 
 target_link_libraries(tbeq_tests_unit
@@ -48,11 +53,18 @@ target_sources(tbeq_tests_unit PRIVATE
 target_include_directories(tbeq_tests_unit
     PRIVATE
         ${CMAKE_SOURCE_DIR}/client/ui
+        ${CMAKE_SOURCE_DIR}/client/render
         ${CMAKE_SOURCE_DIR}/server/common
+)
+
+target_sources(tbeq_tests_unit PRIVATE
+    ${CMAKE_SOURCE_DIR}/client/render/procedural/TileGenerator.cpp
 )
 
 add_executable(tbeq_tests_integration
     integration/cluster_registers_test.cpp
+    integration/login_and_handoff_test.cpp
+    integration/two_players_and_portal_test.cpp
 )
 
 target_link_libraries(tbeq_tests_integration
@@ -65,4 +77,4 @@ target_link_libraries(tbeq_tests_integration
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 catch_discover_tests(tbeq_tests_unit)
-catch_discover_tests(tbeq_tests_integration)
+catch_discover_tests(tbeq_tests_integration PROPERTIES RESOURCE_LOCK integration_servers)

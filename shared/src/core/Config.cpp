@@ -43,11 +43,24 @@ AppConfig parseServerArgs(int argc, char** argv, const std::string& defaultProce
         {
             config.dataRoot = argv[++i];
         }
+        else if (arg == "--db-path" && i + 1 < argc)
+        {
+            config.dbPath = argv[++i];
+        }
+        else if (arg == "--world-login-client-port" && i + 1 < argc)
+        {
+            config.worldLoginClientPort = static_cast<uint16_t>(std::stoi(argv[++i]));
+        }
+        else if (arg == "--world-seed" && i + 1 < argc)
+        {
+            config.worldSeed = std::stoll(argv[++i]);
+        }
         else if (arg == "--help" || arg == "-h")
         {
             std::cout << "Usage: " << argv[0]
                       << " [--dev-mode] [--zone-id ID] [--port N] [--client-port N]"
-                      << " [--world-login HOST] [--world-login-port N]\n";
+                      << " [--world-login HOST] [--world-login-port N]"
+                      << " [--world-login-client-port N] [--db-path PATH] [--world-seed N]\n";
             std::exit(0);
         }
     }

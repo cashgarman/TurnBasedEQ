@@ -8,6 +8,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(WIN32)
     add_compile_definitions(_WIN32_WINNT=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+        add_compile_options(/FS)
+    endif()
 endif()
 
 option(TBEQ_BUILD_TESTS "Build test suite" ON)
@@ -72,12 +75,14 @@ if(NOT sqlite3_POPULATED)
     FetchContent_Populate(sqlite3)
 endif()
 
+set(TBEQ_SQLITE3_SOURCE_DIR ${sqlite3_SOURCE_DIR} CACHE INTERNAL "")
+
 add_library(tbeq_asio INTERFACE)
 target_include_directories(tbeq_asio INTERFACE ${asio_SOURCE_DIR}/asio/include)
 target_compile_definitions(tbeq_asio INTERFACE ASIO_STANDALONE)
 
 add_library(tbeq_sqlite3 STATIC ${sqlite3_SOURCE_DIR}/sqlite3.c)
-target_include_directories(tbeq_sqlite3 PUBLIC ${sqlite3_SOURCE_DIR})
+target_include_directories(tbeq_sqlite3 PRIVATE ${sqlite3_SOURCE_DIR})
 target_compile_definitions(tbeq_sqlite3 PUBLIC SQLITE_ENABLE_JSON1)
 
 find_package(imgui CONFIG REQUIRED)

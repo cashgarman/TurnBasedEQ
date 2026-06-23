@@ -2,7 +2,9 @@ param(
     [string]$BuildConfig = "Debug",
     [string]$ZoneId = "starter_city",
     [int]$WorldLoginPort = 9000,
-    [int]$ZoneClientPort = 9100
+    [int]$WorldLoginClientPort = 9001,
+    [int]$ZoneClientPort = 9100,
+    [string]$DbPath = "config/tbeq.db"
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,9 +23,15 @@ function Resolve-Executable {
 $WorldLoginExe = Resolve-Executable "tbeq_world_login"
 $ZoneServerExe = Resolve-Executable "tbeq_zone_server"
 
-Write-Host "Starting WorldLogin on port $WorldLoginPort ..."
+Write-Host "Starting WorldLogin on port $WorldLoginPort (client port $WorldLoginClientPort) ..."
 $WorldLoginProc = Start-Process -FilePath $WorldLoginExe `
-    -ArgumentList @("--dev-mode", "--port", $WorldLoginPort) `
+    -ArgumentList @(
+        "--dev-mode",
+        "--port", $WorldLoginPort,
+        "--world-login-client-port", $WorldLoginClientPort,
+        "--db-path", (Join-Path $RepoRoot $DbPath),
+        "--data-root", (Join-Path $RepoRoot "data")
+    ) `
     -WorkingDirectory $RepoRoot `
     -PassThru `
     -WindowStyle Normal
@@ -37,7 +45,9 @@ $ZoneServerProc = Start-Process -FilePath $ZoneServerExe `
         "--zone-id", $ZoneId,
         "--world-login", "127.0.0.1",
         "--world-login-port", $WorldLoginPort,
-        "--client-port", $ZoneClientPort
+        "--client-port", $ZoneClientPort,
+        "--db-path", (Join-Path $RepoRoot $DbPath),
+        "--data-root", (Join-Path $RepoRoot "data")
     ) `
     -WorkingDirectory $RepoRoot `
     -PassThru `
