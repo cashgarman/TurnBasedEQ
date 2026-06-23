@@ -37,6 +37,7 @@
 #include "ui/look/LookWindow.hpp"
 #include "ui/dialog/NpcDialogWindow.hpp"
 #include "ui/skills/SkillsWindow.hpp"
+#include "ui/MechanicToolbar.hpp"
 #include "tbeq/content/MobCatalog.hpp"
 #include "tbeq/content/ItemCatalog.hpp"
 #include "tbeq/content/SkillCatalog.hpp"
@@ -175,6 +176,7 @@ struct ClientApp
     tbeq::client::LookWindow lookWindow;
     tbeq::client::NpcDialogWindow npcDialogWindow;
     tbeq::client::SkillsWindow skillsWindow;
+    tbeq::client::MechanicToolbar mechanicToolbar;
     bool combatVisible = false;
     bool inventoryVisible = false;
     bool merchantVisible = false;
@@ -224,6 +226,29 @@ struct ClientApp
 
         statusMessage = "Login to enter the generated world.";
         return true;
+    }
+
+    void centerCameraOnPlayer(int32_t playerTileX, int32_t playerTileY)
+    {
+        const int viewTilesWide = width / tbeq::render::TileGenerator::kTileSize + 2;
+        const int viewTilesHigh = height / tbeq::render::TileGenerator::kTileSize + 2;
+        const int32_t maxCameraX = std::max(0, static_cast<int32_t>(zoneSnapshot.width) - viewTilesWide);
+        const int32_t maxCameraY = std::max(0, static_cast<int32_t>(zoneSnapshot.height) - viewTilesHigh);
+        cameraTileX = std::clamp(playerTileX - viewTilesWide / 2, 0, maxCameraX);
+        cameraTileY = std::clamp(playerTileY - viewTilesHigh / 2, 0, maxCameraY);
+    }
+
+    void toggleMechanicWindow(bool& visible, tbeq::ui::GameWindow& panel)
+    {
+        visible = !visible;
+        panel.state().visible = visible;
+        layoutManager.markDirty();
+    }
+
+    void toggleShellWindow(tbeq::ui::GameWindow& panel)
+    {
+        panel.state().visible = !panel.state().visible;
+        layoutManager.markDirty();
     }
 
     bool init()
@@ -882,8 +907,7 @@ struct ClientApp
             loginSession.raceId,
             loginSession.classId);
 
-        cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
-        cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
+        centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
         state = ClientState::InZone;
         statusMessage = "In zone: " + zoneSnapshot.zoneName;
         chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Gold outlines = merchants, blue = lorekeepers (N to interact).");
@@ -947,23 +971,18 @@ struct ClientApp
         {
             if (event.key.keysym.sym == SDLK_k)
             {
-                skillsVisible = !skillsVisible;
-                skillsWindowPanel.state().visible = skillsVisible;
-                layoutManager.markDirty();
+                toggleMechanicWindow(skillsVisible, skillsWindowPanel);
+                return;
             }
 
             if (event.key.keysym.sym == SDLK_i)
             {
-                inventoryVisible = !inventoryVisible;
-                inventoryWindowPanel.state().visible = inventoryVisible;
-                layoutManager.markDirty();
+                toggleMechanicWindow(inventoryVisible, inventoryWindowPanel);
                 return;
             }
             if (event.key.keysym.sym == SDLK_l)
             {
-                lookVisible = !lookVisible;
-                lookWindowPanel.state().visible = lookVisible;
-                layoutManager.markDirty();
+                toggleMechanicWindow(lookVisible, lookWindowPanel);
                 return;
             }
             if (event.key.keysym.sym == SDLK_n)
@@ -1028,8 +1047,7 @@ struct ClientApp
                             entityRenderer->applySnapshot(*snapshot);
                         }
                         applyInventorySnapshot(zoneClient->inventorySnapshot());
-                        cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
-                        cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
+                        centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
                         chatLines.push_back("[System] Transferred to " + zoneSnapshot.zoneName);
                         appendPortalHints(chatLines, zoneSnapshot.zoneId);
                     }
@@ -1049,8 +1067,7 @@ struct ClientApp
             if (zoneClient->moveTo(targetX, targetY, moveResult) && moveResult.ok)
             {
                 entityRenderer->updateLocalPlayerPosition(moveResult.tileX, moveResult.tileY);
-                cameraTileX = std::max(0, moveResult.tileX - 10);
-                cameraTileY = std::max(0, moveResult.tileY - 6);
+                centerCameraOnPlayer(moveResult.tileX, moveResult.tileY);
             }
         }
         else if (state == ClientState::InZone && event.type == SDL_MOUSEBUTTONDOWN
@@ -1094,8 +1111,7 @@ struct ClientApp
 
         if (zoneClient != nullptr && entityRenderer != nullptr)
         {
-            cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
-            cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
+            centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
         }
 
         tilemapRenderer->render(cameraTileX, cameraTileY, viewTilesWide, viewTilesHigh);
@@ -1152,7 +1168,7 @@ struct ClientApp
         constexpr float kMargin = 12.0f;
         const ImVec2 pos(
             static_cast<float>(width) - kMargin - textSize.x,
-            kMargin);
+            tbeq::client::MechanicToolbar::kHeight + kMargin);
 
         ImDrawList* drawList = ImGui::GetForegroundDrawList();
         drawList->AddText(
@@ -1237,6 +1253,95 @@ struct ClientApp
     }
 #endif
 
+    void renderMechanicToolbar()
+    {
+        if (state != ClientState::InZone)
+        {
+            return;
+        }
+
+        std::vector<tbeq::client::MechanicToolbarButton> buttons;
+        buttons.push_back(
+            {
+                "Skills",
+                "K",
+                true,
+                skillsVisible,
+                [this]()
+                {
+                    toggleMechanicWindow(skillsVisible, skillsWindowPanel);
+                },
+            });
+        buttons.push_back(
+            {
+                "Inventory",
+                "I",
+                true,
+                inventoryVisible,
+                [this]()
+                {
+                    toggleMechanicWindow(inventoryVisible, inventoryWindowPanel);
+                },
+            });
+        buttons.push_back(
+            {
+                "Look",
+                "L",
+                true,
+                lookVisible,
+                [this]()
+                {
+                    toggleMechanicWindow(lookVisible, lookWindowPanel);
+                },
+            });
+        buttons.push_back(
+            {
+                "Combat",
+                nullptr,
+                combatWindow.isActive(),
+                combatVisible,
+                [this]()
+                {
+                    toggleMechanicWindow(combatVisible, combatWindowPanel);
+                },
+            });
+        buttons.push_back(
+            {
+                "Chat",
+                nullptr,
+                true,
+                chatWindow.state().visible,
+                [this]()
+                {
+                    toggleShellWindow(chatWindow);
+                },
+            });
+        buttons.push_back(
+            {
+                "Map",
+                nullptr,
+                true,
+                minimapWindow.state().visible,
+                [this]()
+                {
+                    toggleShellWindow(minimapWindow);
+                },
+            });
+        buttons.push_back(
+            {
+                "HUD",
+                nullptr,
+                true,
+                hudWindow.state().visible,
+                [this]()
+                {
+                    toggleShellWindow(hudWindow);
+                },
+            });
+
+        mechanicToolbar.draw(width, buttons);
+    }
+
     void renderShellWindows()
     {
         if (state == ClientState::Login)
@@ -1247,6 +1352,8 @@ struct ClientApp
 #endif
             return;
         }
+
+        renderMechanicToolbar();
 
         if (hudWindow.begin(width, height))
         {
@@ -1259,7 +1366,7 @@ struct ClientApp
             ImGui::Text("Level: %u", hudLevel);
             ImGui::Text("Mana: %u / %u", hudMana, hudMaxMana);
             ImGui::Text("Gold: %u", hudGold);
-            ImGui::TextUnformatted("WASD move | I inventory | K skills | L look | N interact | P portal");
+            ImGui::TextUnformatted("WASD move | Toolbar above | N interact | P portal");
         }
         if (hudWindow.syncFromImGui())
         {
