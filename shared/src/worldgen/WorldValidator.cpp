@@ -192,6 +192,90 @@ bool portalDestinationsExist(const GeneratedWorld& world)
     return true;
 }
 
+bool graphIsConnectedFromLinks(const GeneratedWorld& world)
+{
+    if (world.zones.empty())
+    {
+        return false;
+    }
+
+    std::unordered_map<std::string, std::vector<std::string>> graph;
+    for (const auto& zone : world.zones)
+    {
+        graph.emplace(zone.id, std::vector<std::string>{});
+    }
+
+    for (const auto& link : world.links)
+    {
+        graph[link.fromZoneId].push_back(link.toZoneId);
+    }
+
+    const std::string startZoneId = world.zones.front().id;
+    std::unordered_set<std::string> visited;
+    std::queue<std::string> pending;
+    pending.push(startZoneId);
+    visited.insert(startZoneId);
+
+    while (!pending.empty())
+    {
+        const std::string current = pending.front();
+        pending.pop();
+        const auto it = graph.find(current);
+        if (it == graph.end())
+        {
+            continue;
+        }
+
+        for (const auto& neighbor : it->second)
+        {
+            if (visited.insert(neighbor).second)
+            {
+                pending.push(neighbor);
+            }
+        }
+    }
+
+    for (const auto& zone : world.zones)
+    {
+        if (visited.find(zone.id) == visited.end())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool zoneTypesValid(const GeneratedWorld& world)
+{
+    for (const auto& zone : world.zones)
+    {
+        if (zone.zoneType.empty())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool linkEndpointsExist(const GeneratedWorld& world)
+{
+    std::unordered_set<std::string> zoneIds;
+    for (const auto& zone : world.zones)
+    {
+        zoneIds.insert(zone.id);
+    }
+
+    for (const auto& link : world.links)
+    {
+        if (zoneIds.find(link.fromZoneId) == zoneIds.end()
+            || zoneIds.find(link.toZoneId) == zoneIds.end())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 WorldValidator::WorldValidator(ValidatorRules rules)
@@ -253,6 +337,87 @@ ValidationReport WorldValidator::validate(const GeneratedWorld& world, const std
             report.ok = false;
             report.errors.push_back("Zone " + zone.id + " has too many single-tile chokes");
         }
+    }
+
+    return report;
+}
+
+ValidationReport WorldValidator::validateZone(const GeneratedZone& zone, const std::filesystem::path& dataRoot) const
+{
+    ValidationReport report;
+    report.ok = true;
+
+    const auto collisions = loadTileCollisions(dataRoot);
+    if (collisions.empty())
+    {
+        report.ok = false;
+        report.errors.push_back("Unable to load tile collision data");
+        return report;
+    }
+
+    if (static_cast<int32_t>(zone.tiles.size()) != zone.width * zone.height)
+    {
+        report.ok = false;
+        report.errors.push_back("Zone " + zone.id + " tile grid size mismatch");
+        return report;
+    }
+
+    const double ratio = walkableRatio(zone, collisions);
+    if (ratio < rules_.minWalkableRatio)
+    {
+        report.ok = false;
+        report.errors.push_back("Zone " + zone.id + " walkable ratio below minimum");
+    }
+
+    const int32_t chokes = countSingleTileChokes(zone, collisions);
+    if (chokes > rules_.maxSingleTileChokeCount)
+    {
+        report.ok = false;
+        report.errors.push_back("Zone " + zone.id + " has too many single-tile chokes");
+    }
+
+    for (const auto& portal : zone.portals)
+    {
+        const std::size_t index = static_cast<std::size_t>(portal.tileY * zone.width + portal.tileX);
+        if (index >= zone.tiles.size() || zone.tiles[index] != "portal_pad")
+        {
+            report.ok = false;
+            report.errors.push_back("Zone " + zone.id + " portal tile invalid at ("
+                + std::to_string(portal.tileX) + "," + std::to_string(portal.tileY) + ")");
+        }
+    }
+
+    return report;
+}
+
+ValidationReport WorldValidator::validateSkeleton(const GeneratedWorld& world) const
+{
+    ValidationReport report;
+    report.ok = true;
+
+    if (world.zones.empty())
+    {
+        report.ok = false;
+        report.errors.push_back("World has no zones");
+        return report;
+    }
+
+    if (!zoneTypesValid(world))
+    {
+        report.ok = false;
+        report.errors.push_back("One or more zones missing zone_type");
+    }
+
+    if (!linkEndpointsExist(world))
+    {
+        report.ok = false;
+        report.errors.push_back("One or more zone links reference missing zones");
+    }
+
+    if (rules_.requireConnectedGraph && !graphIsConnectedFromLinks(world))
+    {
+        report.ok = false;
+        report.errors.push_back("Zone link graph is not fully connected");
     }
 
     return report;

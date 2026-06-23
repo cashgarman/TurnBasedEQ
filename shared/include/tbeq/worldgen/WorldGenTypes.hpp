@@ -7,11 +7,22 @@
 namespace tbeq::worldgen
 {
 
+struct ZoneLink
+{
+    std::string linkId;
+    std::string fromZoneId;
+    std::string toZoneId;
+    std::string fromEdge;
+    std::string toEdge;
+    std::string label;
+};
+
 struct GeneratedZone
 {
     std::string id;
     std::string name;
     std::string role;
+    std::string zoneType;
     std::string biome;
     std::string tileStyle;
     int32_t width = 0;
@@ -52,6 +63,7 @@ struct GeneratedWorld
     int64_t seed = 0;
     std::string version;
     std::vector<GeneratedZone> zones;
+    std::vector<ZoneLink> links;
 };
 
 struct ValidatorRules

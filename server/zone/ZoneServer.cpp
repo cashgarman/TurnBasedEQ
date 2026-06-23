@@ -58,6 +58,15 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         throw std::runtime_error("Failed to ensure world data in database");
     }
 
+    if (!worldgen::ensureZoneGenerated(
+            database_,
+            config_.zoneId,
+            config_.worldSeed,
+            std::filesystem::path(config_.dataRoot)))
+    {
+        throw std::runtime_error("Failed to generate zone content");
+    }
+
     const auto tileDefsPath = std::filesystem::path(config.dataRoot) / "tile_defs.json";
     if (!tileDefs_.loadFromFile(tileDefsPath))
     {

@@ -63,6 +63,14 @@ Includes unit tests, integration tests, and CTest target `content_validation`.
 - **State handoff** — full character state (`state_json`, zone, tile) saved to shared SQLite on disconnect and before zone transfer; restored on login via WorldLogin broker + `LoadCharacter`
 - **Per-zone logging** — `logs/zone_starter_city.log`, `logs/zone_starter_hunting.log`, etc.
 
+### Phase 5.6 — Per-zone procedural generation
+
+- **World skeleton** — world bootstrap writes `worlds`, zone stubs (`zone_type`, dimensions, biome), and `zone_links` (portal graph) only
+- **Lazy zone generation** — each zone server generates tiles, portals, spawns, and NPC slots on first launch if `zone_tiles` is empty
+- **Zone templates** — `data/worldgen/zone_templates.json` drives dimensions and entity counts per `zone_type` (`city`, `hunting`, `dungeon`)
+- **Deterministic portals** — `PortalPlacementResolver` pairs cross-zone destination coordinates from `zone_links` and world seed
+- **Dev regen** — delete a zone’s `zone_tiles` row (or `clearWorld` + restart) to regenerate that zone; two processes must not share the same `--zone-id`
+
 ## Run local server cluster
 
 ```powershell

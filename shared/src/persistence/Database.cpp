@@ -90,6 +90,85 @@ bool Database::exec(const std::string& sql) const
     return true;
 }
 
+namespace
+{
+
+bool columnExists(sqlite3* db, const char* table, const char* column)
+{
+    sqlite3_stmt* stmt = nullptr;
+    const std::string sql = "PRAGMA table_info(" + std::string(table) + ");";
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return false;
+    }
+
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        if (name != nullptr && std::string(name) == column)
+        {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+bool execSql(sqlite3* db, const char* sql)
+{
+    char* errMsg = nullptr;
+    const int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK)
+    {
+        if (errMsg != nullptr)
+        {
+            sqlite3_free(errMsg);
+        }
+        return false;
+    }
+    return true;
+}
+
+bool migrateSchemaPhase56(sqlite3* db)
+{
+    if (!columnExists(db, "zones", "zone_type"))
+    {
+        if (!execSql(db, "ALTER TABLE zones ADD COLUMN zone_type TEXT NOT NULL DEFAULT 'city';"))
+        {
+            return false;
+        }
+    }
+
+    static const char* kZoneLinksSql = R"SQL(
+CREATE TABLE IF NOT EXISTS zone_links (
+    link_id TEXT PRIMARY KEY,
+    from_zone_id TEXT NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+    to_zone_id TEXT NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+    from_edge TEXT NOT NULL,
+    to_edge TEXT NOT NULL,
+    label TEXT
+);
+)SQL";
+
+    if (!execSql(db, kZoneLinksSql))
+    {
+        return false;
+    }
+
+    return execSql(db, R"SQL(
+UPDATE zones SET zone_type = CASE role
+    WHEN 'starter_city' THEN 'city'
+    WHEN 'hunting' THEN 'hunting'
+    WHEN 'dungeon' THEN 'dungeon'
+    ELSE zone_type
+END;
+)SQL");
+}
+
+} // namespace
+
 bool Database::initializeSchema()
 {
     static const char* kSchemaSql = R"SQL(
@@ -189,7 +268,12 @@ CREATE TABLE IF NOT EXISTS zone_triggers (
 );
 )SQL";
 
-    return exec(kSchemaSql);
+    if (!exec(kSchemaSql))
+    {
+        return false;
+    }
+
+    return migrateSchemaPhase56(db_);
 }
 
 bool Database::clearWorld()
@@ -199,6 +283,7 @@ bool Database::clearWorld()
         && exec("DELETE FROM zone_spawns;")
         && exec("DELETE FROM zone_portals;")
         && exec("DELETE FROM zone_tiles;")
+        && exec("DELETE FROM zone_links;")
         && exec("DELETE FROM zones;")
         && exec("DELETE FROM worlds;");
 }
@@ -505,6 +590,7 @@ bool Database::insertZone(
     int64_t worldId,
     const std::string& name,
     const std::string& role,
+    const std::string& zoneType,
     const std::string& biome,
     const std::string& tileStyle,
     int32_t width,
@@ -513,8 +599,8 @@ bool Database::insertZone(
 {
     sqlite3_stmt* stmt = nullptr;
     const char* sql = R"SQL(
-INSERT INTO zones (id, world_id, name, role, biome, tile_style, width, height, is_safe)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO zones (id, world_id, name, role, zone_type, biome, tile_style, width, height, is_safe)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 )SQL";
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
     {
@@ -525,14 +611,68 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
     sqlite3_bind_int64(stmt, 2, worldId);
     bindText(stmt, 3, name);
     bindText(stmt, 4, role);
-    bindText(stmt, 5, biome);
-    bindText(stmt, 6, tileStyle);
-    sqlite3_bind_int(stmt, 7, width);
-    sqlite3_bind_int(stmt, 8, height);
-    sqlite3_bind_int(stmt, 9, isSafe ? 1 : 0);
+    bindText(stmt, 5, zoneType);
+    bindText(stmt, 6, biome);
+    bindText(stmt, 7, tileStyle);
+    sqlite3_bind_int(stmt, 8, width);
+    sqlite3_bind_int(stmt, 9, height);
+    sqlite3_bind_int(stmt, 10, isSafe ? 1 : 0);
     const bool ok = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);
     return ok;
+}
+
+bool Database::insertZoneLink(const ZoneLinkRecord& link)
+{
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = R"SQL(
+INSERT INTO zone_links (link_id, from_zone_id, to_zone_id, from_edge, to_edge, label)
+VALUES (?, ?, ?, ?, ?, ?);
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return false;
+    }
+
+    bindText(stmt, 1, link.linkId);
+    bindText(stmt, 2, link.fromZoneId);
+    bindText(stmt, 3, link.toZoneId);
+    bindText(stmt, 4, link.fromEdge);
+    bindText(stmt, 5, link.toEdge);
+    bindText(stmt, 6, link.label);
+    const bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool Database::hasZoneContent(const std::string& zoneId) const
+{
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = "SELECT 1 FROM zone_tiles WHERE zone_id = ? LIMIT 1;";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return false;
+    }
+
+    bindText(stmt, 1, zoneId);
+    const bool exists = sqlite3_step(stmt) == SQLITE_ROW;
+    sqlite3_finalize(stmt);
+    return exists;
+}
+
+bool Database::beginTransaction() const
+{
+    return exec("BEGIN IMMEDIATE;");
+}
+
+bool Database::commitTransaction() const
+{
+    return exec("COMMIT;");
+}
+
+bool Database::rollbackTransaction() const
+{
+    return exec("ROLLBACK;");
 }
 
 bool Database::insertZoneTiles(const std::string& zoneId, const std::string& tileDataJson)
@@ -688,8 +828,11 @@ std::optional<ZoneMetadataRecord> Database::loadZoneMetadata(const std::string& 
 {
     sqlite3_stmt* stmt = nullptr;
     const char* sql = R"SQL(
-SELECT id, name, tile_style, width, height, is_safe
-FROM zones WHERE id = ? LIMIT 1;
+SELECT z.id, z.name, z.zone_type, z.role, z.biome, z.tile_style, z.width, z.height, z.is_safe,
+       z.world_id, w.seed
+FROM zones z
+JOIN worlds w ON w.id = z.world_id
+WHERE z.id = ? LIMIT 1;
 )SQL";
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
     {
@@ -703,14 +846,76 @@ FROM zones WHERE id = ? LIMIT 1;
         ZoneMetadataRecord record;
         record.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
         record.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        record.tileStyle = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-        record.width = sqlite3_column_int(stmt, 3);
-        record.height = sqlite3_column_int(stmt, 4);
-        record.isSafe = sqlite3_column_int(stmt, 5) != 0;
+        record.zoneType = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        record.role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        record.biome = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        record.tileStyle = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        record.width = sqlite3_column_int(stmt, 6);
+        record.height = sqlite3_column_int(stmt, 7);
+        record.isSafe = sqlite3_column_int(stmt, 8) != 0;
+        record.worldId = sqlite3_column_int64(stmt, 9);
+        record.worldSeed = sqlite3_column_int64(stmt, 10);
         metadata = std::move(record);
     }
     sqlite3_finalize(stmt);
     return metadata;
+}
+
+std::vector<ZoneLinkRecord> Database::loadAllZoneLinks() const
+{
+    std::vector<ZoneLinkRecord> links;
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = R"SQL(
+SELECT link_id, from_zone_id, to_zone_id, from_edge, to_edge, COALESCE(label, '')
+FROM zone_links ORDER BY link_id;
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return links;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        ZoneLinkRecord link;
+        link.linkId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        link.fromZoneId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        link.toZoneId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        link.fromEdge = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        link.toEdge = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        link.label = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        links.push_back(std::move(link));
+    }
+    sqlite3_finalize(stmt);
+    return links;
+}
+
+std::vector<ZoneLinkRecord> Database::loadOutgoingZoneLinks(const std::string& zoneId) const
+{
+    std::vector<ZoneLinkRecord> links;
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = R"SQL(
+SELECT link_id, from_zone_id, to_zone_id, from_edge, to_edge, COALESCE(label, '')
+FROM zone_links WHERE from_zone_id = ? ORDER BY link_id;
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return links;
+    }
+
+    bindText(stmt, 1, zoneId);
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        ZoneLinkRecord link;
+        link.linkId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        link.fromZoneId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        link.toZoneId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        link.fromEdge = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        link.toEdge = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        link.label = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        links.push_back(std::move(link));
+    }
+    sqlite3_finalize(stmt);
+    return links;
 }
 
 std::vector<NpcSlotRecord> Database::loadZoneNpcSlots(const std::string& zoneId) const

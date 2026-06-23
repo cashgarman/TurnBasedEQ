@@ -53,7 +53,7 @@ bool TempDatabase::generateWorld(int64_t seed) const
 #endif
 
     tbeq::worldgen::WorldGenerator generator(seed, dataRoot);
-    return generator.writeToDatabase(database);
+    return generator.writeWorldSkeletonToDatabase(database);
 }
 
 } // namespace tbeq::test

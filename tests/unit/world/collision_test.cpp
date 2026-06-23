@@ -6,6 +6,7 @@
 #include "tbeq/world/ZoneGrid.hpp"
 #include "tbeq/persistence/Database.hpp"
 #include "tbeq/worldgen/WorldGenerator.hpp"
+#include "tbeq/worldgen/WorldBootstrap.hpp"
 
 #ifdef TBEQ_REPO_ROOT
 #define TBEQ_DATA_ROOT TBEQ_REPO_ROOT "/data"
@@ -26,7 +27,8 @@ TEST_CASE("zone grid collision respects tile_defs", "[world][collision]")
     REQUIRE(database.initializeSchema());
 
     tbeq::worldgen::WorldGenerator generator(42, TBEQ_DATA_ROOT);
-    REQUIRE(generator.writeToDatabase(database));
+    REQUIRE(generator.writeWorldSkeletonToDatabase(database));
+    REQUIRE(tbeq::worldgen::ensureZoneGenerated(database, "starter_city", 42, TBEQ_DATA_ROOT));
 
     tbeq::world::ZoneGrid grid;
     REQUIRE(grid.loadFromDatabase(database, "starter_city", catalog));
@@ -46,7 +48,8 @@ TEST_CASE("portal lookup returns destination", "[world][collision]")
     REQUIRE(database.initializeSchema());
 
     tbeq::worldgen::WorldGenerator generator(42, TBEQ_DATA_ROOT);
-    REQUIRE(generator.writeToDatabase(database));
+    REQUIRE(generator.writeWorldSkeletonToDatabase(database));
+    REQUIRE(tbeq::worldgen::ensureZoneGenerated(database, "starter_city", 42, TBEQ_DATA_ROOT));
 
     tbeq::world::ZoneGrid grid;
     REQUIRE(grid.loadFromDatabase(database, "starter_city", catalog));

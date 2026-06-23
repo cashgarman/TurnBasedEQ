@@ -9,6 +9,11 @@ add_library(tbeq_shared
     src/worldgen/WorldGenerator.cpp
     src/worldgen/WorldValidator.cpp
     src/worldgen/WorldBootstrap.cpp
+    src/worldgen/WorldLayoutGraph.cpp
+    src/worldgen/ZoneTypeCatalog.cpp
+    src/worldgen/ZoneLayoutUtils.cpp
+    src/worldgen/PortalPlacementResolver.cpp
+    src/worldgen/ZoneGenerator.cpp
     src/world/TileDefCatalog.cpp
     src/world/ZoneGrid.cpp
     src/content/MobCatalog.cpp

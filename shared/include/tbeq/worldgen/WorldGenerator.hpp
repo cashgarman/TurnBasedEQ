@@ -15,16 +15,13 @@ public:
     WorldGenerator(int64_t seed, const std::filesystem::path& dataRoot);
 
     GeneratedWorld generate() const;
+    GeneratedWorld buildWorldSkeleton() const;
+    bool writeWorldSkeletonToDatabase(db::Database& database) const;
     bool writeToDatabase(db::Database& database) const;
     ValidationReport validateOnly() const;
+    ValidationReport validateSkeletonOnly() const;
 
 private:
-    GeneratedWorld buildWorld() const;
-    GeneratedZone buildCityZone() const;
-    GeneratedZone buildHuntingZone() const;
-    GeneratedZone buildDungeonZone() const;
-    void bindNpcContent(GeneratedWorld& world) const;
-
     int64_t seed_;
     std::filesystem::path dataRoot_;
 };

@@ -62,14 +62,29 @@ struct ZonePortalRecord
     std::string label;
 };
 
+struct ZoneLinkRecord
+{
+    std::string linkId;
+    std::string fromZoneId;
+    std::string toZoneId;
+    std::string fromEdge;
+    std::string toEdge;
+    std::string label;
+};
+
 struct ZoneMetadataRecord
 {
     std::string id;
     std::string name;
+    std::string zoneType;
+    std::string role;
+    std::string biome;
     std::string tileStyle;
     int32_t width = 0;
     int32_t height = 0;
     bool isSafe = false;
+    int64_t worldId = 0;
+    int64_t worldSeed = 0;
 };
 
 struct NpcSlotRecord
@@ -134,11 +149,17 @@ public:
         int64_t worldId,
         const std::string& name,
         const std::string& role,
+        const std::string& zoneType,
         const std::string& biome,
         const std::string& tileStyle,
         int32_t width,
         int32_t height,
         bool isSafe);
+    bool insertZoneLink(const ZoneLinkRecord& link);
+    bool hasZoneContent(const std::string& zoneId) const;
+    bool beginTransaction() const;
+    bool commitTransaction() const;
+    bool rollbackTransaction() const;
     bool insertZoneTiles(const std::string& zoneId, const std::string& tileDataJson);
     bool insertZonePortal(const ZonePortalRecord& portal);
     bool insertZoneSpawn(
@@ -158,6 +179,8 @@ public:
     std::vector<std::string> listZoneIds() const;
     std::optional<std::string> loadZoneTiles(const std::string& zoneId) const;
     std::optional<ZoneMetadataRecord> loadZoneMetadata(const std::string& zoneId) const;
+    std::vector<ZoneLinkRecord> loadAllZoneLinks() const;
+    std::vector<ZoneLinkRecord> loadOutgoingZoneLinks(const std::string& zoneId) const;
     std::vector<ZonePortalRecord> loadZonePortals(const std::string& zoneId) const;
     std::vector<NpcSlotRecord> loadZoneNpcSlots(const std::string& zoneId) const;
     std::vector<ZoneSpawnRecord> loadZoneSpawns(const std::string& zoneId) const;
