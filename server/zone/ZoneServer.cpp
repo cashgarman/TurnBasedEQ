@@ -1,7 +1,9 @@
 #include "ZoneServer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 
 #include <spdlog/spdlog.h>
@@ -23,6 +25,36 @@ namespace
 
 constexpr int32_t kSayRadiusTiles = 15;
 constexpr int32_t kAggroRadiusTiles = 3;
+
+std::optional<std::pair<int32_t, int32_t>> findNearestWalkableTileInGrid(
+    const world::ZoneGrid& grid,
+    int32_t centerX,
+    int32_t centerY)
+{
+    const int32_t maxRadius = std::max(grid.width(), grid.height());
+    for (int32_t radius = 0; radius <= maxRadius; ++radius)
+    {
+        for (int32_t dy = -radius; dy <= radius; ++dy)
+        {
+            for (int32_t dx = -radius; dx <= radius; ++dx)
+            {
+                if (std::max(std::abs(dx), std::abs(dy)) != radius)
+                {
+                    continue;
+                }
+
+                const int32_t x = centerX + dx;
+                const int32_t y = centerY + dy;
+                if (grid.isWalkable(x, y))
+                {
+                    return std::make_pair(x, y);
+                }
+            }
+        }
+    }
+
+    return std::nullopt;
+}
 
 } // namespace
 
@@ -829,6 +861,9 @@ void ZoneServer::handleClientPacket(
     case net::ClientPacketType::SessionEnd:
         handleSessionEnd(connection, packet);
         break;
+    case net::ClientPacketType::PlayerCommandRequest:
+        handlePlayerCommand(connection, packet);
+        break;
     case net::ClientPacketType::Ping:
     {
         net::ClientPingPayload ping;
@@ -1163,38 +1198,63 @@ void ZoneServer::tryAggro(PlayerEntity& player)
         return;
     }
 
-    std::lock_guard<std::mutex> lock(stateMutex_);
-    for (auto& spawn : spawns_)
+    CombatManager::PlayerView view;
+    std::string mobTable;
+    ZoneSpawnState* aggroSpawn = nullptr;
+
     {
-        if (!spawn.active)
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        if (player.inCombat)
         {
-            continue;
-        }
-
-        const int32_t dx = std::abs(player.tileX - spawn.tileX);
-        const int32_t dy = std::abs(player.tileY - spawn.tileY);
-        if (dx > kAggroRadiusTiles || dy > kAggroRadiusTiles)
-        {
-            continue;
-        }
-
-        auto view = makePlayerView(player);
-        if (combatManager_->tryStartSpawnCombat(view, spawn.mobTable))
-        {
-            spawn.active = false;
-            spawn.respawnAtUnix = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count()
-                + spawn.respawnSeconds;
-            spdlog::info(
-                "Combat started for {} at spawn {} ({}, {})",
-                player.characterId,
-                spawn.spawnId,
-                spawn.tileX,
-                spawn.tileY);
-            broadcastEntitySnapshot();
             return;
         }
+
+        for (auto& spawn : spawns_)
+        {
+            if (!spawn.active)
+            {
+                continue;
+            }
+
+            const int32_t dx = std::abs(player.tileX - spawn.tileX);
+            const int32_t dy = std::abs(player.tileY - spawn.tileY);
+            if (dx > kAggroRadiusTiles || dy > kAggroRadiusTiles)
+            {
+                continue;
+            }
+
+            view = makePlayerView(player);
+            mobTable = spawn.mobTable;
+            aggroSpawn = &spawn;
+            break;
+        }
     }
+
+    if (aggroSpawn == nullptr)
+    {
+        return;
+    }
+
+    if (!combatManager_->tryStartSpawnCombat(view, mobTable))
+    {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        aggroSpawn->active = false;
+        aggroSpawn->respawnAtUnix = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()
+            + aggroSpawn->respawnSeconds;
+        spdlog::info(
+            "Combat started for {} at spawn {} ({}, {})",
+            player.characterId,
+            aggroSpawn->spawnId,
+            aggroSpawn->tileX,
+            aggroSpawn->tileY);
+    }
+
+    broadcastEntitySnapshot();
 }
 
 void ZoneServer::handleSubmitAction(
@@ -1552,6 +1612,97 @@ void ZoneServer::handleDebugCommand(
         response.message = "Practiced " + activity;
         break;
     }
+    case net::DebugCommand::ListZones:
+    {
+        const auto zoneIds = database_.listZoneIds();
+        std::string message;
+        for (const auto& zoneId : zoneIds)
+        {
+            if (!message.empty())
+            {
+                message += ';';
+            }
+            const auto metadata = database_.loadZoneMetadata(zoneId);
+            message += zoneId + ':' + (metadata.has_value() ? metadata->name : zoneId);
+        }
+        response.ok = true;
+        response.message = message;
+        break;
+    }
+    case net::DebugCommand::TeleportToZone:
+    {
+        if (player == nullptr || request.args.empty())
+        {
+            response.message = "Usage: teleport_to_zone <zoneId>";
+            break;
+        }
+
+        const std::string& destZoneId = request.args[0];
+        const auto metadata = database_.loadZoneMetadata(destZoneId);
+        if (!metadata.has_value())
+        {
+            response.message = "Unknown zone: " + destZoneId;
+            break;
+        }
+
+        const auto destination = findZoneCenterWalkable(destZoneId);
+        if (!destination.has_value())
+        {
+            response.message = "No walkable tile found at center of " + destZoneId;
+            break;
+        }
+
+        if (combatManager_ != nullptr)
+        {
+            combatManager_->forceEndCombat(player->characterId, combat::CombatOutcome::Fled);
+        }
+
+        if (destZoneId == config_.zoneId)
+        {
+            {
+                std::lock_guard<std::mutex> lock(stateMutex_);
+                pendingTransfers_.erase(player->characterId);
+                player->tileX = destination->first;
+                player->tileY = destination->second;
+                player->locationDirty = true;
+
+                for (auto& [_, ai] : aiCompanions_)
+                {
+                    if (ai.leaderCharacterId == player->characterId)
+                    {
+                        ai.tileX = player->tileX;
+                        ai.tileY = player->tileY;
+                    }
+                }
+            }
+
+            persistPlayerToDatabase(*player);
+            player->locationDirty = false;
+            broadcastEntitySnapshot();
+            response.ok = true;
+            response.message = "Teleported to center of " + metadata->name;
+            break;
+        }
+
+        std::string transferError;
+        if (beginZoneTransfer(
+                *player,
+                connection,
+                packet.header.sequenceId,
+                destZoneId,
+                destination->first,
+                destination->second,
+                transferError))
+        {
+            response.ok = true;
+            response.message = "Transferring to " + metadata->name;
+        }
+        else
+        {
+            response.message = transferError;
+        }
+        break;
+    }
     default:
     {
         const auto generic = debugHandler_.handle(request);
@@ -1650,6 +1801,164 @@ void ZoneServer::handleChatMessage(
     }
 }
 
+std::optional<std::pair<int32_t, int32_t>> ZoneServer::findNearestWalkableTile(
+    int32_t centerX,
+    int32_t centerY) const
+{
+    return findNearestWalkableTileInGrid(zoneGrid_, centerX, centerY);
+}
+
+std::optional<std::pair<int32_t, int32_t>> ZoneServer::findZoneCenterWalkable(const std::string& zoneId) const
+{
+    world::ZoneGrid grid;
+    if (!grid.loadFromDatabase(database_, zoneId, tileDefs_))
+    {
+        return std::nullopt;
+    }
+
+    const int32_t centerX = grid.width() / 2;
+    const int32_t centerY = grid.height() / 2;
+    return findNearestWalkableTileInGrid(grid, centerX, centerY);
+}
+
+bool ZoneServer::beginZoneTransfer(
+    PlayerEntity& player,
+    const std::shared_ptr<TcpConnection>& connection,
+    uint32_t clientSequenceId,
+    const std::string& destZoneId,
+    int32_t destTileX,
+    int32_t destTileY,
+    std::string& outErrorMessage)
+{
+    if (!worldLink_)
+    {
+        outErrorMessage = "World link unavailable";
+        return false;
+    }
+
+    persistPlayerToDatabase(player);
+    player.locationDirty = false;
+
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        pendingTransfers_[player.characterId] = PendingTransfer{
+            player.characterId,
+            player.sessionTokenHash,
+            connection,
+            clientSequenceId};
+    }
+
+    net::ZoneTransferRequestPayload transfer;
+    transfer.characterId = player.characterId;
+    transfer.sourceZoneId = config_.zoneId;
+    transfer.destZoneId = destZoneId;
+    transfer.destTileX = destTileX;
+    transfer.destTileY = destTileY;
+    transfer.sessionResumeToken = player.sessionTokenHash;
+
+    sendServerPacketToWorld(
+        worldLink_,
+        net::ServerPacketType::ZoneTransferRequest,
+        clientSequenceId,
+        net::serialize(transfer));
+
+    return true;
+}
+
+bool ZoneServer::executeStuckCommand(PlayerEntity& player, net::PlayerCommandResultPayload& result)
+{
+    if (combatManager_ != nullptr)
+    {
+        combatManager_->forceEndCombat(player.characterId, combat::CombatOutcome::Fled);
+    }
+
+    const int32_t centerX = zoneGrid_.width() / 2;
+    const int32_t centerY = zoneGrid_.height() / 2;
+    const auto destination = findNearestWalkableTile(centerX, centerY);
+    if (!destination.has_value())
+    {
+        result.ok = false;
+        result.message = "No safe location found in this zone.";
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        pendingTransfers_.erase(player.characterId);
+        player.tileX = destination->first;
+        player.tileY = destination->second;
+        player.locationDirty = true;
+
+        for (auto& [_, ai] : aiCompanions_)
+        {
+            if (ai.leaderCharacterId == player.characterId)
+            {
+                ai.tileX = player.tileX;
+                ai.tileY = player.tileY;
+            }
+        }
+    }
+
+    persistPlayerToDatabase(player);
+    player.locationDirty = false;
+    broadcastEntitySnapshot();
+
+    result.ok = true;
+    result.message = "You have been relocated to zone center.";
+    result.tileX = player.tileX;
+    result.tileY = player.tileY;
+    return true;
+}
+
+void ZoneServer::handlePlayerCommand(
+    const std::shared_ptr<TcpConnection>& connection,
+    const net::SerializedPacket& packet)
+{
+    net::PlayerCommandRequestPayload request;
+    net::PlayerCommandResultPayload result;
+    if (!net::deserializeClientPacket(packet, request))
+    {
+        result.message = "Invalid player command";
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::PlayerCommandResult,
+            packet.header.sequenceId,
+            net::serialize(result),
+            packet.header.sessionTokenHash);
+        return;
+    }
+
+    PlayerEntity* player = findPlayerByConnection(connection);
+    if (player == nullptr)
+    {
+        result.message = "Not in zone";
+    }
+    else
+    {
+        std::string command = request.command;
+        std::transform(command.begin(), command.end(), command.begin(), [](unsigned char ch)
+        {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+        if (command == "stuck")
+        {
+            executeStuckCommand(*player, result);
+        }
+        else
+        {
+            result.message = "Unknown command: " + request.command;
+        }
+    }
+
+    sendClientPacket(
+        connection,
+        net::ClientPacketType::PlayerCommandResult,
+        packet.header.sequenceId,
+        net::serialize(result),
+        packet.header.sessionTokenHash);
+}
+
 void ZoneServer::handleUsePortal(
     const std::shared_ptr<TcpConnection>& connection,
     const net::SerializedPacket& packet)
@@ -1705,31 +2014,25 @@ void ZoneServer::handleUsePortal(
         return;
     }
 
-    persistPlayerToDatabase(*player);
-    player->locationDirty = false;
-
-    {
-        std::lock_guard<std::mutex> lock(stateMutex_);
-        pendingTransfers_[player->characterId] = PendingTransfer{
-            player->characterId,
-            player->sessionTokenHash,
+    std::string transferError;
+    if (!beginZoneTransfer(
+            *player,
             connection,
-            packet.header.sequenceId};
+            packet.header.sequenceId,
+            portal->destZoneId,
+            portal->destX,
+            portal->destY,
+            transferError))
+    {
+        result.message = transferError;
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::UsePortalResult,
+            packet.header.sequenceId,
+            net::serialize(result),
+            packet.header.sessionTokenHash);
+        return;
     }
-
-    net::ZoneTransferRequestPayload transfer;
-    transfer.characterId = player->characterId;
-    transfer.sourceZoneId = config_.zoneId;
-    transfer.destZoneId = portal->destZoneId;
-    transfer.destTileX = portal->destX;
-    transfer.destTileY = portal->destY;
-    transfer.sessionResumeToken = player->sessionTokenHash;
-
-    sendServerPacketToWorld(
-        worldLink_,
-        net::ServerPacketType::ZoneTransferRequest,
-        packet.header.sequenceId,
-        net::serialize(transfer));
 
     result.ok = true;
     result.message = "Transfer requested";

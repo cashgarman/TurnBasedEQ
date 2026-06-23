@@ -27,11 +27,9 @@ void SkillsWindow::applySnapshot(const net::SkillsSnapshotPayload& snapshot)
 
 void SkillsWindow::applySkillGain(const net::SkillGainPayload& gain)
 {
-    auto it = skillEntries_.find(gain.skillId);
-    if (it != skillEntries_.end())
-    {
-        it->second.level = gain.newLevel;
-    }
+    auto& entry = skillEntries_[gain.skillId];
+    entry.skillId = gain.skillId;
+    entry.level = gain.newLevel;
     recentSkillUps_.push_back(gain.skillId);
     if (recentSkillUps_.size() > 8)
     {
@@ -42,11 +40,6 @@ void SkillsWindow::applySkillGain(const net::SkillGainPayload& gain)
 void SkillsWindow::applyLevelUp(const net::LevelUpPayload& levelUp)
 {
     snapshot_.characterLevel = levelUp.newLevel;
-    for (auto& [skillId, entry] : skillEntries_)
-    {
-        entry.cap = skillCap(skillId);
-        (void)skillId;
-    }
 }
 
 std::string SkillsWindow::categoryLabel(tbeq::SkillCategory category) const
@@ -76,16 +69,6 @@ std::string SkillsWindow::categoryLabel(tbeq::SkillCategory category) const
     default:
         return "Other";
     }
-}
-
-uint16_t SkillsWindow::skillCap(const std::string& skillId) const
-{
-    const auto it = skillEntries_.find(skillId);
-    if (it == skillEntries_.end())
-    {
-        return 0;
-    }
-    return it->second.cap;
 }
 
 void SkillsWindow::draw(

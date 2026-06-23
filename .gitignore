@@ -27,3 +27,6 @@ config/tbeq.db
 config/tbeq.db-*
 third_party/cache/
 third_party/imgui-src/
+data/sprites/*
+!data/sprites/entities/
+!data/sprites/ATTRIBUTION.md

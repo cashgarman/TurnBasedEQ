@@ -160,24 +160,43 @@ void EntityRenderer::applySnapshot(const net::EntitySnapshotPayload& snapshot)
         visual.tileY = entity.tileY;
         visual.isLocalPlayer = hasLocalPlayer_ && entity.entityId == localPlayer_.entityId;
 
-        const auto prev = preserved.find(entity.entityId);
-        if (prev != preserved.end())
+        if (visual.isLocalPlayer)
         {
-            visual.prevTileX = prev->second.tileX;
-            visual.prevTileY = prev->second.tileY;
-            visual.facing = prev->second.facing;
+            localPlayer_.prevTileX = localPlayer_.tileX;
+            localPlayer_.prevTileY = localPlayer_.tileY;
+            localPlayer_.tileX = entity.tileX;
+            localPlayer_.tileY = entity.tileY;
+            visual.prevTileX = localPlayer_.prevTileX;
+            visual.prevTileY = localPlayer_.prevTileY;
+            if (localPlayer_.tileX != localPlayer_.prevTileX || localPlayer_.tileY != localPlayer_.prevTileY)
+            {
+                localPlayer_.facing = render::facingFromDelta(
+                    localPlayer_.tileX - localPlayer_.prevTileX,
+                    localPlayer_.tileY - localPlayer_.prevTileY);
+            }
+            visual.facing = localPlayer_.facing;
         }
         else
         {
-            visual.prevTileX = entity.tileX;
-            visual.prevTileY = entity.tileY;
-        }
+            const auto prev = preserved.find(entity.entityId);
+            if (prev != preserved.end())
+            {
+                visual.prevTileX = prev->second.tileX;
+                visual.prevTileY = prev->second.tileY;
+                visual.facing = prev->second.facing;
+            }
+            else
+            {
+                visual.prevTileX = entity.tileX;
+                visual.prevTileY = entity.tileY;
+            }
 
-        if (visual.tileX != visual.prevTileX || visual.tileY != visual.prevTileY)
-        {
-            visual.facing = render::facingFromDelta(
-                visual.tileX - visual.prevTileX,
-                visual.tileY - visual.prevTileY);
+            if (visual.tileX != visual.prevTileX || visual.tileY != visual.prevTileY)
+            {
+                visual.facing = render::facingFromDelta(
+                    visual.tileX - visual.prevTileX,
+                    visual.tileY - visual.prevTileY);
+            }
         }
 
         entities_[entity.entityId] = std::move(visual);

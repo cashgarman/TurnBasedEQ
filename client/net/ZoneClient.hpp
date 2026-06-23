@@ -51,8 +51,16 @@ public:
     bool moveTo(int32_t tileX, int32_t tileY, net::MoveResultPayload& outResult);
     bool usePortal(net::ZoneConnectInfoPayload& outConnectInfo, std::string* outErrorMessage = nullptr);
     bool sendSayChat(const std::string& text);
+    bool sendPlayerCommand(
+        const std::string& command,
+        const std::vector<std::string>& args,
+        net::PlayerCommandResultPayload& outResult);
     bool submitAction(const net::SubmitActionPayload& action, net::SubmitActionResultPayload& outResult);
     bool sendDebugCommand(net::DebugCommand command, const std::vector<std::string>& args, net::DebugCommandResponsePayload& outResponse);
+    bool sendDebugTeleportToZone(
+        const std::string& zoneId,
+        net::DebugCommandResponsePayload& outResponse,
+        std::optional<net::ZoneConnectInfoPayload>& outConnectInfo);
     bool equipItem(const std::string& itemId, net::EquipItemResultPayload& outResult);
     bool unequipItem(const std::string& slot, net::UnequipItemResultPayload& outResult);
     bool interactNpc(uint32_t npcEntityId);
@@ -77,8 +85,10 @@ public:
     void setMerchantBuyResultCallback(MerchantBuyResultCallback callback);
     void setMerchantSellResultCallback(MerchantSellResultCallback callback);
     void setNpcDialogOpenCallback(NpcDialogOpenCallback callback);
+    void setPlayerCommandResultCallback(std::function<void(const net::PlayerCommandResultPayload&)> callback);
 
     const net::InventorySnapshotPayload& inventorySnapshot() const { return inventorySnapshot_; }
+    const net::SkillsSnapshotPayload& skillsSnapshot() const { return skillsSnapshot_; }
 
     int32_t playerTileX() const { return playerTileX_; }
     int32_t playerTileY() const { return playerTileY_; }
@@ -86,6 +96,8 @@ public:
 
 private:
     bool sendPacket(net::ClientPacketType type, const net::ByteWriter& writer, uint64_t sessionTokenHash);
+    void syncPlayerPositionFromSnapshot(const net::EntitySnapshotPayload& snapshot);
+    void queueEntitySnapshot(net::EntitySnapshotPayload snapshot);
     bool readExact(std::size_t size, void* buffer, int timeoutMs);
     std::optional<net::SerializedPacket> readPacket(int timeoutMs);
     bool requestZoneTiles(net::ZoneSnapshotPayload& snapshot);
@@ -114,7 +126,9 @@ private:
     MerchantBuyResultCallback merchantBuyResultCallback_;
     MerchantSellResultCallback merchantSellResultCallback_;
     NpcDialogOpenCallback npcDialogOpenCallback_;
+    std::function<void(const net::PlayerCommandResultPayload&)> playerCommandResultCallback_;
     net::InventorySnapshotPayload inventorySnapshot_;
+    net::SkillsSnapshotPayload skillsSnapshot_;
     std::deque<net::EntitySnapshotPayload> pendingEntitySnapshots_;
 };
 

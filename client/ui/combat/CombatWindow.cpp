@@ -76,12 +76,18 @@ void CombatWindow::applyStart(const net::CombatStartPayload& start)
     {
         if (participant.isPlayerControlled)
         {
+            playerCombatSlot_ = participant.combatSlot;
             playerClassId_ = participant.classId;
             playerMana_ = participant.mana;
             playerMaxMana_ = participant.maxMana;
             playerHp_ = participant.hp;
             playerMaxHp_ = participant.maxHp;
         }
+    }
+    selectedTargetSlot_ = defaultEnemyTarget(participants_);
+    if (selectedTargetSlot_ == 0)
+    {
+        selectedTargetSlot_ = defaultAllyTarget(participants_, playerCombatSlot_);
     }
     combatLog_.push_back("Combat started!");
 }

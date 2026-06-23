@@ -1,6 +1,9 @@
 #include "DebugMenu.hpp"
 
 #include <imgui.h>
+#include <sstream>
+#include <utility>
+#include <vector>
 
 #include "LogViewer.hpp"
 #include "UnitTestRunner.hpp"
@@ -9,6 +12,48 @@
 
 namespace tbeq::ui
 {
+
+namespace
+{
+
+struct ZoneOption
+{
+    std::string id;
+    std::string label;
+};
+
+std::vector<ZoneOption> parseZoneListMessage(const std::string& message)
+{
+    std::vector<ZoneOption> options;
+    std::stringstream stream(message);
+    std::string entry;
+    while (std::getline(stream, entry, ';'))
+    {
+        if (entry.empty())
+        {
+            continue;
+        }
+
+        const auto separator = entry.find(':');
+        if (separator == std::string::npos)
+        {
+            options.push_back(ZoneOption{entry, entry});
+            continue;
+        }
+
+        ZoneOption option;
+        option.id = entry.substr(0, separator);
+        option.label = entry.substr(separator + 1);
+        if (option.label.empty())
+        {
+            option.label = option.id;
+        }
+        options.push_back(std::move(option));
+    }
+    return options;
+}
+
+} // namespace
 
 DebugMenu::DebugMenu(LogViewer& logViewer)
     : logViewer_(logViewer)
@@ -21,7 +66,8 @@ void DebugMenu::handleInput()
 
 void DebugMenu::drawCheats(
     tbeq::client::ZoneClient* zoneClient,
-    const std::function<void(const std::string& line)>& appendLogLine)
+    const std::function<void(const std::string& line)>& appendLogLine,
+    const TeleportToZoneCallback& teleportToZone)
 {
     if (zoneClient == nullptr)
     {
@@ -137,11 +183,93 @@ void DebugMenu::drawCheats(
             response);
         appendLogLine("[Debug] " + response.message);
     }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Travel cheats");
+    static std::vector<ZoneOption> zoneOptions;
+    static int selectedZoneIndex = 0;
+    static bool zonesLoaded = false;
+    static bool zonesLoadFailed = false;
+
+    if (!zonesLoaded && !zonesLoadFailed)
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        if (zoneClient->sendDebugCommand(tbeq::net::DebugCommand::ListZones, {}, response) && response.ok)
+        {
+            zoneOptions = parseZoneListMessage(response.message);
+            zonesLoaded = true;
+            selectedZoneIndex = 0;
+        }
+        else
+        {
+            zonesLoadFailed = true;
+            appendLogLine("[Debug] Failed to load zone list.");
+        }
+    }
+
+    if (zonesLoaded && !zoneOptions.empty())
+    {
+        const char* preview = zoneOptions[static_cast<std::size_t>(selectedZoneIndex)].label.c_str();
+        if (ImGui::BeginCombo("Zone", preview))
+        {
+            for (int i = 0; i < static_cast<int>(zoneOptions.size()); ++i)
+            {
+                const bool selected = selectedZoneIndex == i;
+                if (ImGui::Selectable(zoneOptions[static_cast<std::size_t>(i)].label.c_str(), selected))
+                {
+                    selectedZoneIndex = i;
+                }
+                if (selected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        if (ImGui::Button("Teleport to zone center"))
+        {
+            if (teleportToZone)
+            {
+                std::string message;
+                const auto& zone = zoneOptions[static_cast<std::size_t>(selectedZoneIndex)];
+                if (teleportToZone(zone.id, message))
+                {
+                    appendLogLine("[Debug] " + message);
+                }
+                else
+                {
+                    appendLogLine("[Debug] " + (message.empty() ? "Teleport failed." : message));
+                }
+            }
+            else
+            {
+                appendLogLine("[Debug] Teleport handler unavailable.");
+            }
+        }
+    }
+    else if (zonesLoadFailed)
+    {
+        ImGui::TextUnformatted("Could not load zone list.");
+        if (ImGui::Button("Retry zone list"))
+        {
+            zonesLoadFailed = false;
+        }
+    }
+    else if (zonesLoaded)
+    {
+        ImGui::TextUnformatted("No zones available.");
+    }
+    else
+    {
+        ImGui::TextUnformatted("Loading zones...");
+    }
 }
 
 void DebugMenu::update(
     tbeq::client::ZoneClient* zoneClient,
-    const std::function<void(const std::string& line)>& appendLogLine)
+    const std::function<void(const std::string& line)>& appendLogLine,
+    const TeleportToZoneCallback& teleportToZone)
 {
     unitTestRunner_.update();
 
@@ -159,7 +287,7 @@ void DebugMenu::update(
         }
         if (ImGui::BeginTabItem("Cheats"))
         {
-            drawCheats(zoneClient, appendLogLine);
+            drawCheats(zoneClient, appendLogLine, teleportToZone);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

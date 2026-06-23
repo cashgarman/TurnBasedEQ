@@ -34,7 +34,7 @@ bool SkillResolver::applyGain(SkillProgress& progress, uint32_t amount, uint16_t
     }
 
     progress.experience += amount;
-    bool leveled = false;
+    bool changed = amount > 0;
     while (progress.level < cap)
     {
         const uint32_t required = progression::skillExperienceToLevelUp(progress.level);
@@ -44,9 +44,9 @@ bool SkillResolver::applyGain(SkillProgress& progress, uint32_t amount, uint16_t
         }
         progress.experience -= required;
         ++progress.level;
-        leveled = true;
+        changed = true;
     }
-    return leveled;
+    return changed;
 }
 
 bool SkillResolver::rollMeleeHit(

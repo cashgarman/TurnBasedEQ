@@ -46,6 +46,12 @@ TEST_CASE("Skill XP thresholds and level-up at cap", "[shared][progression]")
     REQUIRE(progress.level == 2);
     REQUIRE(progress.experience == 0);
 
+    progress.level = 1;
+    progress.experience = 0;
+    REQUIRE(resolver.applyGain(progress, 10, 10));
+    REQUIRE(progress.level == 1);
+    REQUIRE(progress.experience == 10);
+
     progress.level = 10;
     progress.experience = 0;
     REQUIRE_FALSE(resolver.applyGain(progress, 100, 10));

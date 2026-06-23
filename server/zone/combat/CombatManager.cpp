@@ -181,24 +181,23 @@ void CombatManager::applySkillXp(PlayerView& player, const std::string& skillId,
         return;
     }
 
-    if (progress.level <= oldLevel)
+    if (progress.level > oldLevel)
     {
-        return;
+        std::string skillLabel = skillId;
+        if (const tbeq::SkillDef* skillDef = skillCatalog_.findSkill(skillId))
+        {
+            skillLabel = skillDef->displayName;
+        }
+
+        net::SkillGainPayload gain;
+        gain.skillId = skillId;
+        gain.oldLevel = oldLevel;
+        gain.newLevel = progress.level;
+        gain.message = "Your " + skillLabel + " skill has increased! (" + std::to_string(oldLevel)
+            + " -> " + std::to_string(progress.level) + ")";
+        broadcast_({player.characterId}, net::ClientPacketType::SkillGain, net::serialize(gain));
     }
 
-    std::string skillLabel = skillId;
-    if (const tbeq::SkillDef* skillDef = skillCatalog_.findSkill(skillId))
-    {
-        skillLabel = skillDef->displayName;
-    }
-
-    net::SkillGainPayload gain;
-    gain.skillId = skillId;
-    gain.oldLevel = oldLevel;
-    gain.newLevel = progress.level;
-    gain.message = "Your " + skillLabel + " skill has increased! (" + std::to_string(oldLevel)
-        + " -> " + std::to_string(progress.level) + ")";
-    broadcast_({player.characterId}, net::ClientPacketType::SkillGain, net::serialize(gain));
     if (syncProgress_)
     {
         syncProgress_(player.characterId);

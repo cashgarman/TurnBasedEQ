@@ -160,12 +160,24 @@ private:
     void handleMerchantBuy(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleMerchantSell(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleDebugCommand(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handlePlayerCommand(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleChatMessage(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleUsePortal(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleSessionEnd(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
 
     void deliverSayChat(const PlayerEntity& sender, const std::string& text);
     void deliverSystemMessage(const PlayerEntity& player, const std::string& text);
+    bool executeStuckCommand(PlayerEntity& player, net::PlayerCommandResultPayload& result);
+    std::optional<std::pair<int32_t, int32_t>> findNearestWalkableTile(int32_t centerX, int32_t centerY) const;
+    std::optional<std::pair<int32_t, int32_t>> findZoneCenterWalkable(const std::string& zoneId) const;
+    bool beginZoneTransfer(
+        PlayerEntity& player,
+        const std::shared_ptr<TcpConnection>& connection,
+        uint32_t clientSequenceId,
+        const std::string& destZoneId,
+        int32_t destTileX,
+        int32_t destTileY,
+        std::string& outErrorMessage);
     void tryAggro(PlayerEntity& player);
     void updateSpawnRespawns();
     CombatManager::PlayerView makePlayerView(PlayerEntity& player);

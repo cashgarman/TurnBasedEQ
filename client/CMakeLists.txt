@@ -6,6 +6,7 @@ add_executable(tbeq_client
     render/procedural/TileGenerator.cpp
     render/procedural/SpriteGenerator.cpp
     render/procedural/ItemIconGenerator.cpp
+    render/SpriteAtlas.cpp
     render/TextureCache.cpp
     render/SpriteRenderer.cpp
     render/TilemapRenderer.cpp
@@ -34,6 +35,7 @@ target_include_directories(tbeq_client
         ${CMAKE_CURRENT_SOURCE_DIR}/net
         ${CMAKE_CURRENT_SOURCE_DIR}/render
         ${CMAKE_SOURCE_DIR}/third_party/imgui-src/backends
+        ${CMAKE_SOURCE_DIR}/third_party/stb
 )
 
 target_link_libraries(tbeq_client
@@ -52,4 +54,18 @@ if(TBEQ_ENABLE_DEBUG_MENU)
     )
 else()
     target_compile_definitions(tbeq_client PRIVATE TBEQ_ENABLE_DEBUG_MENU=0)
+endif()
+
+if(TARGET SDL2::SDL2 AND TARGET SDL2::SDL2-shared)
+    add_custom_command(TARGET tbeq_client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2::SDL2-shared>"
+            "$<TARGET_FILE_DIR:tbeq_client>"
+        COMMENT "Copying SDL2 runtime library next to tbeq_client")
+elseif(TARGET SDL2::SDL2)
+    add_custom_command(TARGET tbeq_client POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2::SDL2>"
+            "$<TARGET_FILE_DIR:tbeq_client>"
+        COMMENT "Copying SDL2 runtime library next to tbeq_client")
 endif()

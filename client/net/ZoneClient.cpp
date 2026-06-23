@@ -192,7 +192,7 @@ bool ZoneClient::requestZoneTiles(net::ZoneSnapshotPayload& snapshot)
             net::EntitySnapshotPayload entities;
             if (net::deserializeClientPacket(*packet, entities))
             {
-                pendingEntitySnapshots_.push_back(std::move(entities));
+                queueEntitySnapshot(std::move(entities));
             }
         }
         else if (type == net::ClientPacketType::InventorySnapshot)
@@ -204,6 +204,18 @@ bool ZoneClient::requestZoneTiles(net::ZoneSnapshotPayload& snapshot)
                 if (inventorySnapshotCallback_)
                 {
                     inventorySnapshotCallback_(inventorySnapshot_);
+                }
+            }
+        }
+        else if (type == net::ClientPacketType::SkillsSnapshot)
+        {
+            net::SkillsSnapshotPayload skills;
+            if (net::deserializeClientPacket(*packet, skills))
+            {
+                skillsSnapshot_ = std::move(skills);
+                if (skillsSnapshotCallback_)
+                {
+                    skillsSnapshotCallback_(skillsSnapshot_);
                 }
             }
         }
@@ -297,7 +309,7 @@ bool ZoneClient::sessionResume(
             net::EntitySnapshotPayload entities;
             if (net::deserializeClientPacket(*packet, entities))
             {
-                pendingEntitySnapshots_.push_back(std::move(entities));
+                queueEntitySnapshot(std::move(entities));
             }
         }
         else if (type == net::ClientPacketType::InventorySnapshot)
@@ -309,6 +321,18 @@ bool ZoneClient::sessionResume(
                 if (inventorySnapshotCallback_)
                 {
                     inventorySnapshotCallback_(inventorySnapshot_);
+                }
+            }
+        }
+        else if (type == net::ClientPacketType::SkillsSnapshot)
+        {
+            net::SkillsSnapshotPayload skills;
+            if (net::deserializeClientPacket(*packet, skills))
+            {
+                skillsSnapshot_ = std::move(skills);
+                if (skillsSnapshotCallback_)
+                {
+                    skillsSnapshotCallback_(skillsSnapshot_);
                 }
             }
         }
@@ -336,7 +360,7 @@ bool ZoneClient::sessionResume(
             net::EntitySnapshotPayload entities;
             if (net::deserializeClientPacket(*packet, entities))
             {
-                pendingEntitySnapshots_.push_back(std::move(entities));
+                queueEntitySnapshot(std::move(entities));
             }
         }
         else if (type == net::ClientPacketType::InventorySnapshot)
@@ -348,6 +372,18 @@ bool ZoneClient::sessionResume(
                 if (inventorySnapshotCallback_)
                 {
                     inventorySnapshotCallback_(inventorySnapshot_);
+                }
+            }
+        }
+        else if (type == net::ClientPacketType::SkillsSnapshot)
+        {
+            net::SkillsSnapshotPayload skills;
+            if (net::deserializeClientPacket(*packet, skills))
+            {
+                skillsSnapshot_ = std::move(skills);
+                if (skillsSnapshotCallback_)
+                {
+                    skillsSnapshotCallback_(skillsSnapshot_);
                 }
             }
         }
@@ -424,14 +460,8 @@ bool ZoneClient::moveTo(int32_t tileX, int32_t tileY, net::MoveResultPayload& ou
             }
             return outResult.ok;
         }
-        if (type == net::ClientPacketType::EntitySnapshot)
-        {
-            net::EntitySnapshotPayload entities;
-            if (net::deserializeClientPacket(*packet, entities))
-            {
-                pendingEntitySnapshots_.push_back(std::move(entities));
-            }
-        }
+
+        dispatchGameplayPacket(*packet);
     }
 
     return false;
@@ -505,6 +535,57 @@ bool ZoneClient::sendSayChat(const std::string& text)
     message.channel = static_cast<uint8_t>(tbeq::ChatChannel::Say);
     message.text = text;
     return sendPacket(net::ClientPacketType::ChatMessage, net::serialize(message), sessionTokenHash_);
+}
+
+bool ZoneClient::sendPlayerCommand(
+    const std::string& command,
+    const std::vector<std::string>& args,
+    net::PlayerCommandResultPayload& outResult)
+{
+    net::PlayerCommandRequestPayload request;
+    request.command = command;
+    request.args = args;
+    if (!sendPacket(net::ClientPacketType::PlayerCommandRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::PlayerCommandResult)
+        {
+            if (!net::deserializeClientPacket(*packet, outResult))
+            {
+                return false;
+            }
+
+            if (outResult.ok)
+            {
+                playerTileX_ = outResult.tileX;
+                playerTileY_ = outResult.tileY;
+            }
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool ZoneClient::submitAction(const net::SubmitActionPayload& action, net::SubmitActionResultPayload& outResult)
@@ -586,6 +667,98 @@ bool ZoneClient::sendDebugCommand(
     return false;
 }
 
+bool ZoneClient::sendDebugTeleportToZone(
+    const std::string& zoneId,
+    net::DebugCommandResponsePayload& outResponse,
+    std::optional<net::ZoneConnectInfoPayload>& outConnectInfo)
+{
+    outConnectInfo.reset();
+
+    net::DebugCommandRequestPayload request;
+    request.command = net::DebugCommand::TeleportToZone;
+    request.args = {zoneId};
+    if (!sendPacket(net::ClientPacketType::DebugCommandRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    bool gotResponse = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 3000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        const auto type = static_cast<net::ClientPacketType>(packet->header.packetType);
+        if (type == net::ClientPacketType::DebugCommandResponse)
+        {
+            if (!net::deserializeClientPacket(*packet, outResponse))
+            {
+                return false;
+            }
+            gotResponse = true;
+            if (!outResponse.ok)
+            {
+                return false;
+            }
+        }
+        else if (type == net::ClientPacketType::ZoneConnectInfo)
+        {
+            net::ZoneConnectInfoPayload connectInfo;
+            if (!net::deserializeClientPacket(*packet, connectInfo))
+            {
+                return false;
+            }
+            if (!connectInfo.ok)
+            {
+                outResponse.ok = false;
+                outResponse.message = connectInfo.message.empty() ? "Zone transfer failed" : connectInfo.message;
+                return false;
+            }
+            outConnectInfo = std::move(connectInfo);
+            return gotResponse;
+        }
+    }
+
+    return gotResponse;
+}
+
+void ZoneClient::syncPlayerPositionFromSnapshot(const net::EntitySnapshotPayload& snapshot)
+{
+    if (playerEntityId_ == 0)
+    {
+        return;
+    }
+
+    for (const auto& entity : snapshot.entities)
+    {
+        if (entity.entityId == playerEntityId_)
+        {
+            playerTileX_ = entity.tileX;
+            playerTileY_ = entity.tileY;
+            return;
+        }
+    }
+}
+
+void ZoneClient::queueEntitySnapshot(net::EntitySnapshotPayload snapshot)
+{
+    syncPlayerPositionFromSnapshot(snapshot);
+    pendingEntitySnapshots_.push_back(std::move(snapshot));
+}
+
 void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
 {
     const auto type = static_cast<net::ClientPacketType>(packet.header.packetType);
@@ -596,7 +769,7 @@ void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
         net::EntitySnapshotPayload entities;
         if (net::deserializeClientPacket(packet, entities))
         {
-            pendingEntitySnapshots_.push_back(std::move(entities));
+            queueEntitySnapshot(std::move(entities));
         }
         break;
     }
@@ -675,9 +848,13 @@ void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
     case net::ClientPacketType::SkillsSnapshot:
     {
         net::SkillsSnapshotPayload skills;
-        if (net::deserializeClientPacket(packet, skills) && skillsSnapshotCallback_)
+        if (net::deserializeClientPacket(packet, skills))
         {
-            skillsSnapshotCallback_(skills);
+            skillsSnapshot_ = std::move(skills);
+            if (skillsSnapshotCallback_)
+            {
+                skillsSnapshotCallback_(skillsSnapshot_);
+            }
         }
         break;
     }
@@ -748,6 +925,24 @@ void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
         }
         break;
     }
+    case net::ClientPacketType::PlayerCommandResult:
+    {
+        net::PlayerCommandResultPayload result;
+        if (net::deserializeClientPacket(packet, result))
+        {
+            if (result.ok)
+            {
+                playerTileX_ = result.tileX;
+                playerTileY_ = result.tileY;
+            }
+
+            if (playerCommandResultCallback_)
+            {
+                playerCommandResultCallback_(result);
+            }
+        }
+        break;
+    }
     default:
         break;
     }
@@ -786,6 +981,7 @@ std::optional<net::EntitySnapshotPayload> ZoneClient::pollEntitySnapshot()
         net::EntitySnapshotPayload snapshot;
         if (net::deserializeClientPacket(*packet, snapshot))
         {
+            syncPlayerPositionFromSnapshot(snapshot);
             return snapshot;
         }
     }
@@ -883,6 +1079,11 @@ void ZoneClient::setMerchantSellResultCallback(MerchantSellResultCallback callba
 void ZoneClient::setNpcDialogOpenCallback(NpcDialogOpenCallback callback)
 {
     npcDialogOpenCallback_ = std::move(callback);
+}
+
+void ZoneClient::setPlayerCommandResultCallback(std::function<void(const net::PlayerCommandResultPayload&)> callback)
+{
+    playerCommandResultCallback_ = std::move(callback);
 }
 
 bool ZoneClient::equipItem(const std::string& itemId, net::EquipItemResultPayload& outResult)

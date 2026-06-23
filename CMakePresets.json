@@ -1,0 +1,172 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": {
+          "type": "FILEPATH",
+          "value": "${sourceDir}/cmake/VcpkgToolchain.cmake"
+        }
+      },
+      "environment": {
+        "VCPKG_ROOT": "C:/vcpkg"
+      }
+    },
+    {
+      "name": "ninja-debug-client",
+      "displayName": "Ninja Debug (client only, no tests)",
+      "description": "Fastest configure for day-to-day client work.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TBEQ_BUILD_TESTS": "OFF",
+        "TBEQ_USE_SCCACHE": "ON"
+      }
+    },
+    {
+      "name": "ninja-debug-tests",
+      "displayName": "Ninja Debug (with tests)",
+      "description": "Debug build including unit and integration tests.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TBEQ_BUILD_TESTS": "ON",
+        "TBEQ_USE_SCCACHE": "ON"
+      }
+    },
+    {
+      "name": "ninja-relwithdebinfo-client",
+      "displayName": "Ninja RelWithDebInfo (client only)",
+      "description": "Optimized build with debug symbols; faster compile/link than Debug.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "TBEQ_BUILD_TESTS": "OFF",
+        "TBEQ_USE_SCCACHE": "ON"
+      }
+    },
+    {
+      "name": "ninja-release-ci",
+      "displayName": "Ninja Release (CI)",
+      "description": "Release build with tests, matching CI.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TBEQ_BUILD_TESTS": "ON",
+        "TBEQ_USE_SCCACHE": "ON"
+      }
+    },
+    {
+      "name": "vs-debug-client",
+      "displayName": "Visual Studio Debug (client only)",
+      "description": "MSBuild generator fallback when Ninja is unavailable.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": {
+          "type": "FILEPATH",
+          "value": "${sourceDir}/cmake/VcpkgToolchain.cmake"
+        },
+        "TBEQ_BUILD_TESTS": "OFF",
+        "TBEQ_USE_SCCACHE": "ON"
+      },
+      "environment": {
+        "VCPKG_ROOT": "C:/vcpkg"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug-client",
+      "displayName": "Build client (debug, fastest)",
+      "configurePreset": "ninja-debug-client",
+      "targets": ["tbeq_client"],
+      "jobs": 0
+    },
+    {
+      "name": "debug-servers",
+      "displayName": "Build server cluster",
+      "configurePreset": "ninja-debug-client",
+      "targets": ["tbeq_world_login", "tbeq_zone_server"],
+      "jobs": 0
+    },
+    {
+      "name": "debug-dev",
+      "displayName": "Build client + server cluster",
+      "configurePreset": "ninja-debug-client",
+      "targets": ["tbeq_client", "tbeq_world_login", "tbeq_zone_server"],
+      "jobs": 0
+    },
+    {
+      "name": "debug-tests-unit",
+      "displayName": "Build unit tests",
+      "configurePreset": "ninja-debug-tests",
+      "targets": ["tbeq_tests_unit"],
+      "jobs": 0
+    },
+    {
+      "name": "debug-tests-all",
+      "displayName": "Build all tests",
+      "configurePreset": "ninja-debug-tests",
+      "targets": ["tbeq_tests_unit", "tbeq_tests_integration"],
+      "jobs": 0
+    },
+    {
+      "name": "debug-all",
+      "displayName": "Build everything (debug + tests)",
+      "configurePreset": "ninja-debug-tests",
+      "jobs": 0
+    },
+    {
+      "name": "relwithdebinfo-client",
+      "displayName": "Build client (RelWithDebInfo)",
+      "configurePreset": "ninja-relwithdebinfo-client",
+      "targets": ["tbeq_client"],
+      "jobs": 0
+    },
+    {
+      "name": "release-ci",
+      "displayName": "Build Release (CI parity)",
+      "configurePreset": "ninja-release-ci",
+      "jobs": 0
+    },
+    {
+      "name": "vs-debug-client",
+      "displayName": "Build client (Visual Studio)",
+      "configurePreset": "vs-debug-client",
+      "configuration": "Debug",
+      "targets": ["tbeq_client"],
+      "jobs": 0
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug-tests",
+      "displayName": "Run all tests (Debug)",
+      "configurePreset": "ninja-debug-tests",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-tests",
+      "displayName": "Run all tests (Release)",
+      "configurePreset": "ninja-release-ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

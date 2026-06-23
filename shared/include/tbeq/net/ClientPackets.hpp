@@ -415,6 +415,20 @@ struct SessionEndPayload
 {
 };
 
+struct PlayerCommandRequestPayload
+{
+    std::string command;
+    std::vector<std::string> args;
+};
+
+struct PlayerCommandResultPayload
+{
+    bool ok = false;
+    std::string message;
+    int32_t tileX = 0;
+    int32_t tileY = 0;
+};
+
 struct ZoneRegisterPayload
 {
     std::string zoneId;

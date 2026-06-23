@@ -1,19 +1,29 @@
 param(
     [string]$BuildConfig = "Debug",
+    [string]$BuildDir = "",
     [string[]]$Zones = @("starter_city", "starter_hunting", "starter_dungeon"),
     [int]$WorldLoginPort = 9000,
     [int]$WorldLoginClientPort = 9001,
     [int]$ZoneClientPortBase = 9100,
-    [string]$DbPath = "config/tbeq.db"
+    [string]$DbPath = "config/tbeq.db",
+    [switch]$Background
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$BuildDir = Join-Path $RepoRoot "build"
+$BuildRoot = Join-Path $RepoRoot "build"
 
 function Resolve-Executable {
     param([string]$Name)
-    $path = Join-Path $BuildDir "server\$BuildConfig\$Name.exe"
+    if ($BuildDir -ne "")
+    {
+        $path = Join-Path $RepoRoot (Join-Path $BuildDir "server/$Name.exe")
+    }
+    else
+    {
+        $path = Join-Path $BuildRoot "server\$BuildConfig\$Name.exe"
+    }
+
     if (-not (Test-Path $path)) {
         throw "Missing executable: $path. Build the project first."
     }
@@ -185,6 +195,14 @@ Write-Host "  starter_hunting -> east  (120,64) -> Goblin Cave"
 Write-Host "  starter_dungeon -> west  (4,24)   -> Hunting Grounds"
 Write-Host ""
 Write-Host "Press Enter to stop the cluster..."
+
+if ($Background)
+{
+    return [PSCustomObject]@{
+        WorldLoginProc = $WorldLoginProc
+        ZoneProcs        = $ZoneProcs
+    }
+}
 
 try {
     [void][System.Console]::ReadLine()

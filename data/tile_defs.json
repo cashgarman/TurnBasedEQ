@@ -1,6 +1,6 @@
 [
-  {"id": "grass", "category": "grass", "collision": "walkable", "animation": "cycle", "autotileGroup": "grass"},
-  {"id": "grass_flowers", "category": "grass", "collision": "walkable", "animation": "cycle", "autotileGroup": "grass"},
+  {"id": "grass", "category": "grass", "collision": "walkable", "animation": "none", "autotileGroup": "grass"},
+  {"id": "grass_flowers", "category": "grass", "collision": "walkable", "animation": "none", "autotileGroup": "grass"},
   {"id": "dirt", "category": "dirt", "collision": "walkable", "animation": "none", "autotileGroup": "dirt"},
   {"id": "mud", "category": "dirt", "collision": "walkable", "animation": "none", "autotileGroup": "dirt"},
   {"id": "sand", "category": "sand", "collision": "walkable", "animation": "none", "autotileGroup": "sand"},

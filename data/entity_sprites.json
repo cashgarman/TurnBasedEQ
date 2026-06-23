@@ -1,4 +1,16 @@
 {
+  "atlasLayout": {
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "idleStartRow": 0,
+    "walkStartRow": 4
+  },
+  "playerAtlas": "sprites/entities/player.png",
+  "npcAtlases": {
+    "merchant": "sprites/entities/npc_merchant.png",
+    "lore": "sprites/entities/npc_lore.png",
+    "quest": "sprites/entities/npc_quest.png"
+  },
   "races": {
     "human": {"hueOffset": 0, "saturation": 1.0, "lightness": 0.0},
     "wood_elf": {"hueOffset": 28, "saturation": 1.05, "lightness": 0.08},
@@ -16,10 +28,42 @@
     "quest": {"roleColor": "#7ab86a", "silhouette": "default"}
   },
   "mobBodies": {
-    "forest_rat": {"silhouette": "quadruped_small", "bodyColor": "#8B6914", "scale": 0.75},
-    "forest_boar": {"silhouette": "quadruped", "bodyColor": "#6B4423", "scale": 1.1},
-    "goblin_scout": {"silhouette": "humanoid_small", "bodyColor": "#4a7a3a", "scale": 0.9},
-    "goblin_chief": {"silhouette": "humanoid_small", "bodyColor": "#2d5a28", "scale": 1.05}
+    "forest_rat": {
+      "atlas": "sprites/entities/mob_rat.png",
+      "silhouette": "quadruped_small",
+      "bodyColor": "#8B6914",
+      "scale": 0.75
+    },
+    "forest_boar": {
+      "atlas": "sprites/entities/mob_boar.png",
+      "silhouette": "quadruped",
+      "bodyColor": "#6B4423",
+      "scale": 1.1
+    },
+    "grunt_the_boar": {
+      "atlas": "sprites/entities/mob_boar.png",
+      "silhouette": "quadruped",
+      "bodyColor": "#6B4423",
+      "scale": 1.1
+    },
+    "goblin_scout": {
+      "atlas": "sprites/entities/mob_goblin.png",
+      "silhouette": "humanoid_small",
+      "bodyColor": "#4a7a3a",
+      "scale": 0.9
+    },
+    "skrit_nails": {
+      "atlas": "sprites/entities/mob_goblin.png",
+      "silhouette": "humanoid_small",
+      "bodyColor": "#4a7a3a",
+      "scale": 0.9
+    },
+    "goblin_chief": {
+      "atlas": "sprites/entities/mob_goblin_chief.png",
+      "silhouette": "humanoid_small",
+      "bodyColor": "#2d5a28",
+      "scale": 1.05
+    }
   },
   "defaults": {
     "raceId": "human",

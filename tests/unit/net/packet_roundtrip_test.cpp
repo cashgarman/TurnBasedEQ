@@ -193,6 +193,51 @@ TEST_CASE("SessionEnd client packet round-trip", "[net]")
     REQUIRE(tbeq::net::deserializeClientPacket(decoded, parsed));
 }
 
+TEST_CASE("PlayerCommand client packet round-trip", "[net]")
+{
+    tbeq::net::PlayerCommandRequestPayload request;
+    request.command = "stuck";
+    request.args = {"extra"};
+
+    const auto requestWriter = tbeq::net::serialize(request);
+    const auto requestPacket = tbeq::net::serializeClientPacket(
+        tbeq::net::ClientPacketType::PlayerCommandRequest,
+        13,
+        requestWriter);
+    const auto requestEncoded = tbeq::net::encodePacket(requestPacket);
+
+    tbeq::net::SerializedPacket requestDecoded;
+    REQUIRE(tbeq::net::decodePacket(requestEncoded, requestDecoded));
+
+    tbeq::net::PlayerCommandRequestPayload parsedRequest;
+    REQUIRE(tbeq::net::deserializeClientPacket(requestDecoded, parsedRequest));
+    REQUIRE(parsedRequest.command == request.command);
+    REQUIRE(parsedRequest.args == request.args);
+
+    tbeq::net::PlayerCommandResultPayload result;
+    result.ok = true;
+    result.message = "You have been relocated to zone center.";
+    result.tileX = 32;
+    result.tileY = 32;
+
+    const auto resultWriter = tbeq::net::serialize(result);
+    const auto resultPacket = tbeq::net::serializeClientPacket(
+        tbeq::net::ClientPacketType::PlayerCommandResult,
+        14,
+        resultWriter);
+    const auto resultEncoded = tbeq::net::encodePacket(resultPacket);
+
+    tbeq::net::SerializedPacket resultDecoded;
+    REQUIRE(tbeq::net::decodePacket(resultEncoded, resultDecoded));
+
+    tbeq::net::PlayerCommandResultPayload parsedResult;
+    REQUIRE(tbeq::net::deserializeClientPacket(resultDecoded, parsedResult));
+    REQUIRE(parsedResult.ok);
+    REQUIRE(parsedResult.message == result.message);
+    REQUIRE(parsedResult.tileX == result.tileX);
+    REQUIRE(parsedResult.tileY == result.tileY);
+}
+
 TEST_CASE("ZoneTransferComplete server packet round-trip", "[net]")
 {
     tbeq::net::ZoneTransferCompletePayload original;

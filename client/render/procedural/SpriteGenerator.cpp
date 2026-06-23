@@ -135,6 +135,71 @@ Rgba applyTint(const Rgba& color, const EntityRaceTint& tint)
     return hslToRgb(h, s, l);
 }
 
+void tintPixelBuffer(std::vector<uint8_t>& pixels, const EntityRaceTint& tint)
+{
+    for (std::size_t index = 0; index + 3 < pixels.size(); index += 4)
+    {
+        if (pixels[index + 3] < 8)
+        {
+            continue;
+        }
+
+        Rgba color{pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]};
+        color = applyTint(color, tint);
+        pixels[index] = color.r;
+        pixels[index + 1] = color.g;
+        pixels[index + 2] = color.b;
+    }
+}
+
+void blendRegionTint(
+    std::vector<uint8_t>& pixels,
+    int width,
+    int height,
+    const std::string& hexColor,
+    float mix,
+    int x0,
+    int y0,
+    int x1,
+    int y1)
+{
+    if (hexColor.empty() || mix <= 0.0f)
+    {
+        return;
+    }
+
+    const Rgba tintColor = parseHexColor(hexColor);
+    for (int y = y0; y <= y1; ++y)
+    {
+        for (int x = x0; x <= x1; ++x)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height)
+            {
+                continue;
+            }
+            const std::size_t index = static_cast<std::size_t>((y * width + x) * 4);
+            if (pixels[index + 3] < 8)
+            {
+                continue;
+            }
+            Rgba color{pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]};
+            color = lerpColor(color, tintColor, mix);
+            pixels[index] = color.r;
+            pixels[index + 1] = color.g;
+            pixels[index + 2] = color.b;
+        }
+    }
+}
+
+void applyGearTintsToBuffer(std::vector<uint8_t>& pixels, int width, int height, const GearLayerTints& gearTints)
+{
+    blendRegionTint(pixels, width, height, gearTints.head, 0.55f, 8, 0, 23, 11);
+    blendRegionTint(pixels, width, height, gearTints.chest, 0.45f, 6, 10, 25, 21);
+    blendRegionTint(pixels, width, height, gearTints.hands, 0.50f, 0, 12, 8, 22);
+    blendRegionTint(pixels, width, height, gearTints.hands, 0.50f, 24, 12, width - 1, 22);
+    blendRegionTint(pixels, width, height, gearTints.weapon, 0.70f, 22, 8, width - 1, 24);
+}
+
 bool inRect(int x, int y, int left, int top, int right, int bottom)
 {
     return x >= left && x <= right && y >= top && y <= bottom;
@@ -514,11 +579,56 @@ bool EntitySpriteCatalog::loadFromFile(const std::filesystem::path& path)
         for (const auto& [mobId, entry] : json["mobBodies"].items())
         {
             MobBodyDef body;
+            body.atlas = entry.value("atlas", std::string{});
             body.silhouette = entry.value("silhouette", "quadruped_small");
             body.bodyColor = entry.value("bodyColor", "#808080");
             body.scale = entry.value("scale", 1.0f);
             mobBodies_[mobId] = std::move(body);
         }
+    }
+
+    if (json.contains("atlasLayout") && json["atlasLayout"].is_object())
+    {
+        const auto& layout = json["atlasLayout"];
+        atlasLayout_.frameWidth = layout.value("frameWidth", atlasLayout_.frameWidth);
+        atlasLayout_.frameHeight = layout.value("frameHeight", atlasLayout_.frameHeight);
+        atlasLayout_.idleStartRow = layout.value("idleStartRow", atlasLayout_.idleStartRow);
+        atlasLayout_.walkStartRow = layout.value("walkStartRow", atlasLayout_.walkStartRow);
+    }
+
+    const std::filesystem::path dataRoot = path.parent_path();
+    atlasLibrary_.setDataRoot(dataRoot);
+    usesAtlases_ = false;
+
+    if (json.contains("playerAtlas"))
+    {
+        playerAtlas_ = json.value("playerAtlas", std::string{});
+        if (!playerAtlas_.empty())
+        {
+            usesAtlases_ = atlasLibrary_.loadAtlas("player", playerAtlas_);
+        }
+    }
+
+    if (json.contains("npcAtlases") && json["npcAtlases"].is_object())
+    {
+        for (const auto& [roleId, atlasPath] : json["npcAtlases"].items())
+        {
+            if (!atlasPath.is_string())
+            {
+                continue;
+            }
+            npcAtlases_[roleId] = atlasPath.get<std::string>();
+            usesAtlases_ = atlasLibrary_.loadAtlas(roleId, npcAtlases_[roleId]) || usesAtlases_;
+        }
+    }
+
+    for (const auto& [mobId, body] : mobBodies_)
+    {
+        if (body.atlas.empty())
+        {
+            continue;
+        }
+        usesAtlases_ = atlasLibrary_.loadAtlas(mobId, body.atlas) || usesAtlases_;
     }
 
     if (json.contains("defaults") && json["defaults"].is_object())
@@ -578,6 +688,56 @@ MobBodyDef EntitySpriteCatalog::mobBody(const std::string& mobId) const
     return defaultMobBody_;
 }
 
+std::optional<std::string> EntitySpriteCatalog::atlasForEntity(
+    uint8_t entityType,
+    const std::string& appearanceId) const
+{
+    if (!usesAtlases_)
+    {
+        return std::nullopt;
+    }
+
+    if (entityType == 0)
+    {
+        return atlasLibrary_.hasAtlas("player") ? std::optional<std::string>("player") : std::nullopt;
+    }
+
+    if (entityType == 1)
+    {
+        const auto it = npcAtlases_.find(appearanceId);
+        if (it != npcAtlases_.end() && atlasLibrary_.hasAtlas(appearanceId))
+        {
+            return appearanceId;
+        }
+        const auto fallback = npcAtlases_.find(defaultNpcRole_);
+        if (fallback != npcAtlases_.end() && atlasLibrary_.hasAtlas(defaultNpcRole_))
+        {
+            return defaultNpcRole_;
+        }
+        return std::nullopt;
+    }
+
+    if (entityType == 2)
+    {
+        const MobBodyDef body = mobBody(appearanceId);
+        if (!body.atlas.empty() && atlasLibrary_.hasAtlas(appearanceId))
+        {
+            return appearanceId;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::vector<uint8_t> EntitySpriteCatalog::atlasFrame(
+    const std::string& atlasId,
+    AnimationClipId clipId,
+    Facing facing,
+    int frameIndex) const
+{
+    return atlasLibrary_.framePixels(atlasId, atlasLayout_, clipId, facing, frameIndex);
+}
+
 std::vector<uint8_t> SpriteGenerator::generateFrame(
     uint8_t entityType,
     const std::string& raceId,
@@ -590,6 +750,17 @@ std::vector<uint8_t> SpriteGenerator::generateFrame(
     int frameIndex,
     const GearLayerTints& gearTints) const
 {
+    if (const std::optional<std::string> atlasId = catalog.atlasForEntity(entityType, appearanceId))
+    {
+        std::vector<uint8_t> pixels = catalog.atlasFrame(*atlasId, clipId, facing, frameIndex);
+        if (entityType == 0)
+        {
+            tintPixelBuffer(pixels, catalog.raceTint(raceId));
+            applyGearTintsToBuffer(pixels, kSpriteSize, kSpriteSize, gearTints);
+        }
+        return pixels;
+    }
+
     const Rgba base = parseHexColor(style.baseColor);
     const Rgba accent = parseHexColor(style.accentColor);
     const Rgba shadow = parseHexColor(style.shadowColor);

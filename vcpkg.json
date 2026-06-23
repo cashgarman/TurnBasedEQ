@@ -1,6 +1,7 @@
 {
   "name": "turnbasedeq",
   "version-string": "0.1.0",
+  "builtin-baseline": "09633c52c68bfe64ab065aa8f4338b0be1bd048e",
   "dependencies": [
     {
       "name": "imgui",

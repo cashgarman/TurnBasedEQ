@@ -184,11 +184,12 @@ std::vector<uint8_t> TileGenerator::generateFrame(
     {
         for (int x = 0; x < kTileSize; ++x)
         {
+            const int seedFrame = (category == "grass") ? 0 : frameIndex;
             const uint64_t seed = tileSeed(
                 style.masterSeed + static_cast<int64_t>(autotileVariant),
                 tileX + x,
                 tileY + y,
-                frameIndex);
+                seedFrame);
             const double noise = random01(seed);
 
             Rgba color = lerpColor(base, accent, static_cast<float>(noise * style.noiseScale));
@@ -211,18 +212,37 @@ std::vector<uint8_t> TileGenerator::generateFrame(
                     color = lerpColor(color, highlight, 0.6f);
                 }
             }
-            else if (category == "grass" && frameCount > 1)
+            else if (category == "grass")
             {
-                const int sway = static_cast<int>(std::sin(frameIndex * 0.8 + x * 0.2) * 1.5);
-                color = lerpColor(color, highlight, static_cast<float>((x + sway) % 7 == 0 ? 0.25 : 0.0));
-                if (tileId == "grass_flowers" && (x + y + frameIndex) % 11 == 0)
+                constexpr int kBladeSpacing = 5;
+                const bool isBladeColumn = (x % kBladeSpacing) == 0;
+                const uint64_t bladeSeed = tileSeed(
+                    style.masterSeed + static_cast<int64_t>(autotileVariant),
+                    tileX + x / kBladeSpacing,
+                    tileY,
+                    0);
+                const int bladeHeight = kTileSize - 3 - static_cast<int>(random01(bladeSeed) * 10.0);
+                const int bladeTop = kTileSize - bladeHeight;
+                const bool isBlade = isBladeColumn && y >= bladeTop;
+
+                if (isBlade)
                 {
-                    color = lerpColor(color, accent, 0.55f);
+                    const double heightFactor = static_cast<double>(y) / static_cast<double>(kTileSize - 1);
+                    const float tipStrength = static_cast<float>(heightFactor * heightFactor);
+                    color = lerpColor(color, highlight, 0.1f + tipStrength * 0.3f);
                 }
-                if (tileId == "bush" && frameCount > 1)
+
+                if (tileId == "grass_flowers")
                 {
-                    const double rustle = std::sin((x + frameIndex) * 0.4);
-                    color = lerpColor(color, shadow, static_cast<float>(rustle > 0.6 ? 0.15 : 0.0));
+                    const uint64_t flowerSeed = tileSeed(
+                        style.masterSeed + static_cast<int64_t>(autotileVariant),
+                        tileX + x / kBladeSpacing,
+                        tileY + y,
+                        17);
+                    if (y > kTileSize / 2 && random01(flowerSeed) > 0.94)
+                    {
+                        color = lerpColor(color, accent, 0.55f);
+                    }
                 }
                 if (tileId == "tree_canopy")
                 {

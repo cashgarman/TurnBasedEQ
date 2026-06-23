@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <future>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -236,6 +238,88 @@ struct ClientApp
         const int32_t maxCameraY = std::max(0, static_cast<int32_t>(zoneSnapshot.height) - viewTilesHigh);
         cameraTileX = std::clamp(playerTileX - viewTilesWide / 2, 0, maxCameraX);
         cameraTileY = std::clamp(playerTileY - viewTilesHigh / 2, 0, maxCameraY);
+    }
+
+    bool parseSlashCommand(const std::string& input, std::string& outCommand, std::vector<std::string>& outArgs) const
+    {
+        if (input.empty() || input[0] != '/')
+        {
+            return false;
+        }
+
+        std::istringstream stream(input.substr(1));
+        stream >> outCommand;
+        std::transform(outCommand.begin(), outCommand.end(), outCommand.begin(), [](unsigned char ch)
+        {
+            return static_cast<char>(std::tolower(ch));
+        });
+
+        std::string arg;
+        while (stream >> arg)
+        {
+            outArgs.push_back(std::move(arg));
+        }
+
+        return true;
+    }
+
+    void resetLockingUiState()
+    {
+        combatVisible = false;
+        combatWindow.reset();
+        combatWindowPanel.state().visible = false;
+        npcDialogVisible = false;
+        npcDialogWindow.clear();
+        npcDialogWindowPanel.state().visible = false;
+        merchantVisible = false;
+        merchantWindow.clear();
+        merchantWindowPanel.state().visible = false;
+        layoutManager.markDirty();
+    }
+
+    void handleSlashCommandInput(const std::string& input)
+    {
+        std::string command;
+        std::vector<std::string> args;
+        if (!parseSlashCommand(input, command, args))
+        {
+            return;
+        }
+
+        if (command.empty())
+        {
+            chatLines.push_back("[System] Usage: /command [args]");
+            return;
+        }
+
+        if (zoneClient == nullptr)
+        {
+            chatLines.push_back("[System] Not connected to a zone.");
+            return;
+        }
+
+        tbeq::net::PlayerCommandResultPayload result;
+        if (!zoneClient->sendPlayerCommand(command, args, result))
+        {
+            chatLines.push_back("[System] Command timed out.");
+            return;
+        }
+
+        if (result.ok)
+        {
+            resetLockingUiState();
+            if (entityRenderer != nullptr)
+            {
+                entityRenderer->updateLocalPlayerPosition(result.tileX, result.tileY);
+                while (auto snapshot = zoneClient->pollEntitySnapshot())
+                {
+                    entityRenderer->applySnapshot(*snapshot);
+                }
+            }
+            centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
+        }
+
+        chatLines.push_back("[System] " + result.message);
     }
 
     void toggleMechanicWindow(bool& visible, tbeq::ui::GameWindow& panel)
@@ -704,6 +788,12 @@ struct ClientApp
         }
     }
 
+    void applySkillsSnapshot(const tbeq::net::SkillsSnapshotPayload& snapshot)
+    {
+        skillsWindow.applySnapshot(snapshot);
+        hudLevel = snapshot.characterLevel;
+    }
+
     void wireZoneClientCallbacks()
     {
         if (zoneClient == nullptr)
@@ -729,7 +819,6 @@ struct ClientApp
             {
                 if (participant.isPlayerControlled)
                 {
-                    combatWindow.setPlayerCombatSlot(participant.combatSlot);
                     hudHp = participant.hp;
                     hudMaxHp = participant.maxHp;
                     hudMana = participant.mana;
@@ -738,6 +827,8 @@ struct ClientApp
                 }
             }
             combatVisible = true;
+            combatWindowPanel.state().visible = true;
+            layoutManager.markDirty();
             chatLines.push_back("[System] Combat started!");
         });
         zoneClient->setCombatUpdateCallback([this](const tbeq::net::CombatUpdatePayload& update)
@@ -786,8 +877,7 @@ struct ClientApp
         });
         zoneClient->setSkillsSnapshotCallback([this](const tbeq::net::SkillsSnapshotPayload& snapshot)
         {
-            skillsWindow.applySnapshot(snapshot);
-            hudLevel = snapshot.characterLevel;
+            applySkillsSnapshot(snapshot);
         });
         zoneClient->setInventorySnapshotCallback([this](const tbeq::net::InventorySnapshotPayload& snapshot)
         {
@@ -902,6 +992,7 @@ struct ClientApp
         }
 
         applyInventorySnapshot(zoneClient->inventorySnapshot());
+        applySkillsSnapshot(zoneClient->skillsSnapshot());
         lookWindow.setCharacterInfo(
             loginSession.characterName.empty() ? characterNameBuffer : loginSession.characterName,
             loginSession.raceId,
@@ -913,6 +1004,91 @@ struct ClientApp
         chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Gold outlines = merchants, blue = lorekeepers (N to interact).");
         appendPortalHints(chatLines, zoneSnapshot.zoneId);
         profiler.logSummary("enter_zone");
+        return true;
+    }
+
+    bool reconnectToZone(const tbeq::net::ZoneConnectInfoPayload& transfer)
+    {
+        session.zoneConnect = transfer;
+        zoneClient->close();
+        zoneClient = std::make_unique<tbeq::client::ZoneClient>(io);
+        if (!zoneClient->connect(transfer.zoneHost, transfer.zonePort))
+        {
+            chatLines.push_back("[System] Failed to connect to destination zone.");
+            return false;
+        }
+
+        wireZoneClientCallbacks();
+        if (!zoneClient->sessionResume(session.characterId, session.sessionTokenHash, zoneSnapshot))
+        {
+            chatLines.push_back("[System] Session resume failed after zone transfer.");
+            return false;
+        }
+
+        const auto* style = styleCatalog.find(zoneSnapshot.tileStyle);
+        tilemapRenderer->setStyleCatalog(style);
+        tilemapRenderer->setZoneSnapshot(zoneSnapshot);
+        entityRenderer->clear();
+        entityRenderer->setStyleCatalog(style);
+        entityRenderer->setSpriteCatalog(&entitySpriteCatalog);
+        entityRenderer->setItemCatalog(&itemCatalog);
+        entityRenderer->setLocalPlayer(
+            zoneClient->playerEntityId(),
+            session.characterName.empty() ? characterNameBuffer : session.characterName,
+            session.raceId,
+            session.classId,
+            zoneClient->playerTileX(),
+            zoneClient->playerTileY());
+        while (auto snapshot = zoneClient->pollEntitySnapshot())
+        {
+            entityRenderer->applySnapshot(*snapshot);
+        }
+        applyInventorySnapshot(zoneClient->inventorySnapshot());
+        applySkillsSnapshot(zoneClient->skillsSnapshot());
+        centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
+        chatLines.push_back("[System] Transferred to " + zoneSnapshot.zoneName);
+        appendPortalHints(chatLines, zoneSnapshot.zoneId);
+        return true;
+    }
+
+    bool teleportToZoneCheat(const std::string& zoneId, std::string& outMessage)
+    {
+        if (zoneClient == nullptr)
+        {
+            outMessage = "Not connected to a zone.";
+            return false;
+        }
+
+        std::optional<tbeq::net::ZoneConnectInfoPayload> connectInfo;
+        tbeq::net::DebugCommandResponsePayload response;
+        if (!zoneClient->sendDebugTeleportToZone(zoneId, response, connectInfo))
+        {
+            outMessage = response.message.empty() ? "Teleport failed." : response.message;
+            return false;
+        }
+
+        outMessage = response.message;
+        resetLockingUiState();
+
+        if (connectInfo.has_value())
+        {
+            if (!reconnectToZone(*connectInfo))
+            {
+                outMessage = "Teleport started but destination connection failed.";
+                return false;
+            }
+            return true;
+        }
+
+        if (entityRenderer != nullptr)
+        {
+            entityRenderer->updateLocalPlayerPosition(zoneClient->playerTileX(), zoneClient->playerTileY());
+            while (auto snapshot = zoneClient->pollEntitySnapshot())
+            {
+                entityRenderer->applySnapshot(*snapshot);
+            }
+        }
+        centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
         return true;
     }
 
@@ -1021,36 +1197,7 @@ struct ClientApp
                 std::string portalError;
                 if (zoneClient->usePortal(transfer, &portalError))
                 {
-                    session.zoneConnect = transfer;
-                    zoneClient->close();
-                    zoneClient = std::make_unique<tbeq::client::ZoneClient>(io);
-                    zoneClient->connect(transfer.zoneHost, transfer.zonePort);
-                    wireZoneClientCallbacks();
-                    if (zoneClient->sessionResume(session.characterId, session.sessionTokenHash, zoneSnapshot))
-                    {
-                        const auto* style = styleCatalog.find(zoneSnapshot.tileStyle);
-                        tilemapRenderer->setStyleCatalog(style);
-                        tilemapRenderer->setZoneSnapshot(zoneSnapshot);
-                        entityRenderer->clear();
-                        entityRenderer->setStyleCatalog(style);
-                        entityRenderer->setSpriteCatalog(&entitySpriteCatalog);
-                        entityRenderer->setItemCatalog(&itemCatalog);
-                        entityRenderer->setLocalPlayer(
-                            zoneClient->playerEntityId(),
-                            session.characterName.empty() ? characterNameBuffer : session.characterName,
-                            session.raceId,
-                            session.classId,
-                            zoneClient->playerTileX(),
-                            zoneClient->playerTileY());
-                        while (auto snapshot = zoneClient->pollEntitySnapshot())
-                        {
-                            entityRenderer->applySnapshot(*snapshot);
-                        }
-                        applyInventorySnapshot(zoneClient->inventorySnapshot());
-                        centerCameraOnPlayer(zoneClient->playerTileX(), zoneClient->playerTileY());
-                        chatLines.push_back("[System] Transferred to " + zoneSnapshot.zoneName);
-                        appendPortalHints(chatLines, zoneSnapshot.zoneId);
-                    }
+                    reconnectToZone(transfer);
                 }
                 else
                 {
@@ -1243,6 +1390,10 @@ struct ClientApp
                 [this](const std::string& line)
                 {
                     chatLines.push_back(line);
+                },
+                [this](const std::string& zoneId, std::string& outMessage)
+                {
+                    return teleportToZoneCheat(zoneId, outMessage);
                 });
         }
         if (debugWindow.syncFromImGui())
@@ -1471,10 +1622,18 @@ struct ClientApp
             static char inputBuffer[256] = {};
             if (ImGui::InputText("##chat", inputBuffer, sizeof(inputBuffer), ImGuiInputTextFlags_EnterReturnsTrue))
             {
-                if (zoneClient != nullptr && inputBuffer[0] != '\0')
+                if (inputBuffer[0] != '\0')
                 {
-                    zoneClient->sendSayChat(inputBuffer);
-                    chatLines.push_back(std::string("[Say] You: ") + inputBuffer);
+                    const std::string input(inputBuffer);
+                    if (input[0] == '/')
+                    {
+                        handleSlashCommandInput(input);
+                    }
+                    else if (zoneClient != nullptr)
+                    {
+                        zoneClient->sendSayChat(inputBuffer);
+                        chatLines.push_back(std::string("[Say] You: ") + inputBuffer);
+                    }
                     inputBuffer[0] = '\0';
                 }
             }

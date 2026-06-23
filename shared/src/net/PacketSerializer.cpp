@@ -773,6 +773,24 @@ ByteWriter serialize(const SessionEndPayload& payload)
     return ByteWriter{};
 }
 
+ByteWriter serialize(const PlayerCommandRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.command);
+    writer.writeStringVector(payload.args);
+    return writer;
+}
+
+ByteWriter serialize(const PlayerCommandResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeU32(static_cast<uint32_t>(payload.tileX));
+    writer.writeU32(static_cast<uint32_t>(payload.tileY));
+    return writer;
+}
+
 ByteWriter serialize(const DebugCommandRequestPayload& payload)
 {
     ByteWriter writer;
@@ -1847,6 +1865,37 @@ bool deserializeClientPacket(const SerializedPacket& packet, SessionEndPayload& 
 {
     (void)out;
     return packet.header.packetType == static_cast<uint16_t>(ClientPacketType::SessionEnd);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, PlayerCommandRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::PlayerCommandRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.command) && reader.readStringVector(out.args);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, PlayerCommandResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::PlayerCommandResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    uint32_t tileX = 0;
+    uint32_t tileY = 0;
+    if (!reader.readBool(out.ok)
+        || !reader.readString(out.message)
+        || !reader.readU32(tileX)
+        || !reader.readU32(tileY))
+    {
+        return false;
+    }
+    out.tileX = static_cast<int32_t>(tileX);
+    out.tileY = static_cast<int32_t>(tileY);
+    return true;
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out)

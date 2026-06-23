@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
+
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(TbeqCompilerCache)
+
 project(TurnBasedEQ VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -9,7 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(WIN32)
     add_compile_definitions(_WIN32_WINNT=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MSVC)
-        add_compile_options(/FS)
+        add_compile_options(/FS /MP)
     endif()
 endif()
 

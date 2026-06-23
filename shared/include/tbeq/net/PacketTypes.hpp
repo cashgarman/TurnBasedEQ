@@ -56,6 +56,8 @@ enum class ClientPacketType : uint16_t
     SessionEnd = 72,
     LevelUp = 73,
     SkillsSnapshot = 74,
+    PlayerCommandRequest = 75,
+    PlayerCommandResult = 76,
     DebugCommandRequest = 100,
     DebugCommandResponse = 101,
 };

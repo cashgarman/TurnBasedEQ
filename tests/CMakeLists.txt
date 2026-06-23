@@ -66,11 +66,13 @@ target_include_directories(tbeq_tests_unit
         ${CMAKE_SOURCE_DIR}/client/ui
         ${CMAKE_SOURCE_DIR}/client/render
         ${CMAKE_SOURCE_DIR}/server/common
+        ${CMAKE_SOURCE_DIR}/third_party/stb
 )
 
 target_sources(tbeq_tests_unit PRIVATE
     ${CMAKE_SOURCE_DIR}/client/render/procedural/TileGenerator.cpp
     ${CMAKE_SOURCE_DIR}/client/render/procedural/SpriteGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/client/render/SpriteAtlas.cpp
 )
 
 add_executable(tbeq_tests_integration
@@ -81,6 +83,7 @@ add_executable(tbeq_tests_integration
     integration/ai_party_combat_test.cpp
     integration/merchant_buy_test.cpp
     integration/lorekeeper_interact_test.cpp
+    integration/stuck_command_test.cpp
 )
 
 target_link_libraries(tbeq_tests_integration

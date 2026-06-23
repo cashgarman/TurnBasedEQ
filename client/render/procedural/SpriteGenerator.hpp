@@ -2,12 +2,14 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "procedural/TileGenerator.hpp"
 #include "render/AnimationTypes.hpp"
+#include "render/SpriteAtlas.hpp"
 
 namespace tbeq::render
 {
@@ -33,6 +35,7 @@ struct EntityNpcRole
 
 struct MobBodyDef
 {
+    std::string atlas;
     std::string silhouette = "quadruped_small";
     std::string bodyColor = "#808080";
     float scale = 1.0f;
@@ -47,6 +50,19 @@ struct EntitySpriteCatalog
     EntityNpcRole npcRole(const std::string& appearanceId) const;
     MobBodyDef mobBody(const std::string& mobId) const;
 
+    bool usesAtlases() const { return usesAtlases_; }
+    const AtlasLayout& atlasLayout() const { return atlasLayout_; }
+
+    std::optional<std::string> atlasForEntity(
+        uint8_t entityType,
+        const std::string& appearanceId) const;
+
+    std::vector<uint8_t> atlasFrame(
+        const std::string& atlasId,
+        AnimationClipId clipId,
+        Facing facing,
+        int frameIndex) const;
+
 private:
     std::unordered_map<std::string, EntityRaceTint> races_;
     std::unordered_map<std::string, EntityClassTint> classes_;
@@ -56,6 +72,11 @@ private:
     std::string defaultRaceId_ = "human";
     std::string defaultClassId_ = "warrior";
     std::string defaultNpcRole_ = "quest";
+    AtlasLayout atlasLayout_;
+    std::string playerAtlas_;
+    std::unordered_map<std::string, std::string> npcAtlases_;
+    SpriteAtlasLibrary atlasLibrary_;
+    bool usesAtlases_ = false;
 };
 
 struct GearLayerTints

@@ -20,6 +20,57 @@ cd i:\TurnBasedEQ
 
 ## Build
 
+### Fast builds (recommended)
+
+Use **CMake presets** with the **Ninja** generator, parallel compiles (`/MP`), and optional **sccache**. From repo root:
+
+```powershell
+# One-time: set vcpkg location (adjust if yours differs)
+$env:VCPKG_ROOT = "C:\vcpkg"
+
+# Optional but recommended: install sccache for much faster rebuilds
+# scoop install sccache   OR   choco install sccache
+
+# Fastest iteration — client only, no tests (configure once, then rebuild)
+cmake --preset ninja-debug-client
+cmake --build --preset debug-client
+
+# Or use the helper script (loads VS dev tools automatically):
+.\scripts\build-fast.ps1 -Target client
+.\scripts\build-fast.ps1 -Target client -Configure   # force reconfigure
+.\scripts\build-fast.ps1 -Target tests -Preset debug-tests
+.\scripts\build-fast.ps1 -Target release -Preset release-ci
+```
+
+| Preset | Use when |
+|--------|----------|
+| `ninja-debug-client` | Day-to-day client work (fastest configure) |
+| `ninja-debug-tests` | Before pushing; includes Catch2 tests |
+| `ninja-relwithdebinfo-client` | Faster compiles than Debug, still debuggable |
+| `ninja-release-ci` | Matches CI Release build |
+| `vs-debug-client` | Fallback if Ninja is unavailable |
+
+Client binary with Ninja presets: `build/ninja-debug-client/client/tbeq_client.exe`
+
+Run tests after a `ninja-debug-tests` configure:
+
+```powershell
+ctest --preset debug-tests
+```
+
+### One-command dev loop
+
+Build (client + servers), start the cluster, launch the client, and stop servers when the client exits:
+
+```powershell
+.\scripts\run-dev.ps1
+.\scripts\run-dev.ps1 -Configure          # first time or after CMake changes
+.\scripts\run-dev.ps1 -SkipBuild        # skip rebuild if binaries are current
+.\scripts\run-dev.ps1 -Zones starter_city # single zone only
+```
+
+### Legacy build (Visual Studio generator)
+
 ```powershell
 cmake -S . -B build `
   -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake `
@@ -106,7 +157,7 @@ All processes share `config/tbeq.db`. Closing the client saves your location and
 From the repo root (so `config/ui_layout.json` resolves correctly):
 
 ```powershell
-.\build\client\Debug\tbeq_client.exe
+.\build\ninja-debug-client\client\tbeq_client.exe
 ```
 
 ### Phase 0 client UI
@@ -130,6 +181,7 @@ From the repo root (so `config/ui_layout.json` resolves correctly):
 | `tools/data_validator/` | JSON content validation (CTest) |
 | `tests/` | Catch2 unit + integration tests |
 | `data/` | Seed JSON content |
+| `scripts/run-dev.ps1` | Build + cluster + client in one command |
 | `scripts/run_cluster.ps1` | Local dev cluster launcher (multi-zone) |
 
 ## Dev flags

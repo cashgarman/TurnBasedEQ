@@ -109,6 +109,8 @@ bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellRequest
 bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, NpcDialogOpenPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, SessionEndPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, PlayerCommandRequestPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, PlayerCommandResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandRequestPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandResponsePayload& out);
 
@@ -183,6 +185,8 @@ ByteWriter serialize(const MerchantSellRequestPayload& payload);
 ByteWriter serialize(const MerchantSellResultPayload& payload);
 ByteWriter serialize(const NpcDialogOpenPayload& payload);
 ByteWriter serialize(const SessionEndPayload& payload);
+ByteWriter serialize(const PlayerCommandRequestPayload& payload);
+ByteWriter serialize(const PlayerCommandResultPayload& payload);
 ByteWriter serialize(const DebugCommandRequestPayload& payload);
 ByteWriter serialize(const DebugCommandResponsePayload& payload);
 

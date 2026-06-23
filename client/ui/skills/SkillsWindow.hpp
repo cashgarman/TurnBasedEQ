@@ -33,7 +33,6 @@ public:
 
 private:
     std::string categoryLabel(tbeq::SkillCategory category) const;
-    uint16_t skillCap(const std::string& skillId) const;
 
     const content::SkillCatalog* skillCatalog_ = nullptr;
     net::SkillsSnapshotPayload snapshot_;

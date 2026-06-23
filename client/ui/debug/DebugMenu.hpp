@@ -20,15 +20,19 @@ class DebugMenu
 public:
     explicit DebugMenu(LogViewer& logViewer);
 
+    using TeleportToZoneCallback = std::function<bool(const std::string& zoneId, std::string& outMessage)>;
+
     void update(
         tbeq::client::ZoneClient* zoneClient,
-        const std::function<void(const std::string& line)>& appendLogLine);
+        const std::function<void(const std::string& line)>& appendLogLine,
+        const TeleportToZoneCallback& teleportToZone = {});
     void handleInput();
 
 private:
     void drawCheats(
         tbeq::client::ZoneClient* zoneClient,
-        const std::function<void(const std::string& line)>& appendLogLine);
+        const std::function<void(const std::string& line)>& appendLogLine,
+        const TeleportToZoneCallback& teleportToZone);
 
     LogViewer& logViewer_;
     UnitTestRunner unitTestRunner_;

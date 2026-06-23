@@ -25,6 +25,8 @@ enum class DebugCommand : uint16_t
     MaxSkills = 20,
     GrantExperience = 21,
     PracticeSkill = 22,
+    ListZones = 23,
+    TeleportToZone = 24,
     Unknown = 9999,
 };
 
