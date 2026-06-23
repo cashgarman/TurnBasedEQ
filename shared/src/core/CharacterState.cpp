@@ -15,6 +15,7 @@ void applyClassSkills(CharacterState& state, const std::string& classId, uint16_
     const uint16_t baseSkill = static_cast<uint16_t>(5 + level);
     state.skills["offense"] = {baseSkill, 0};
     state.skills["defense"] = {baseSkill, 0};
+    state.skills["merchant"] = {baseSkill, 0};
 
     if (classId == "warrior")
     {
@@ -67,6 +68,8 @@ CharacterState CharacterState::createDefault(const std::string& classId, uint16_
     state.maxHp = static_cast<uint16_t>(80 + level * 10);
     state.hp = state.maxHp;
     state.agi = static_cast<uint16_t>(70 + level);
+    state.cha = 100;
+    state.gold = 200;
 
     if (classId == "warrior" || classId == "rogue")
     {
@@ -122,6 +125,14 @@ CharacterState CharacterState::fromJson(const std::string& json)
         {
             state.agi = parsed["agi"].get<uint16_t>();
         }
+        if (parsed.contains("cha"))
+        {
+            state.cha = parsed["cha"].get<uint16_t>();
+        }
+        if (parsed.contains("gold"))
+        {
+            state.gold = parsed["gold"].get<uint32_t>();
+        }
         if (parsed.contains("equippedWeaponSkill"))
         {
             state.equippedWeaponSkill = parsed["equippedWeaponSkill"].get<std::string>();
@@ -171,6 +182,14 @@ CharacterState CharacterState::fromJson(const std::string& json)
                 }
             }
         }
+        if (parsed.contains("equipment") && parsed["equipment"].is_object())
+        {
+            state.equipment.clear();
+            for (const auto& [slot, itemId] : parsed["equipment"].items())
+            {
+                state.equipment[slot] = itemId.get<std::string>();
+            }
+        }
     }
     catch (const std::exception&)
     {
@@ -190,6 +209,8 @@ std::string CharacterState::toJson() const
     parsed["mana"] = mana;
     parsed["maxMana"] = maxMana;
     parsed["agi"] = agi;
+    parsed["cha"] = cha;
+    parsed["gold"] = gold;
     parsed["equippedWeaponSkill"] = equippedWeaponSkill;
     parsed["godMode"] = godMode;
 
@@ -224,6 +245,13 @@ std::string CharacterState::toJson() const
             {"quantity", item.quantity}});
     }
     parsed["inventory"] = inventoryJson;
+
+    nlohmann::json equipmentJson = nlohmann::json::object();
+    for (const auto& [slot, itemId] : equipment)
+    {
+        equipmentJson[slot] = itemId;
+    }
+    parsed["equipment"] = equipmentJson;
     return parsed.dump();
 }
 
@@ -253,6 +281,50 @@ void CharacterState::addItem(const std::string& itemId, uint16_t quantity)
         }
     }
     inventory.push_back({itemId, quantity});
+}
+
+bool CharacterState::removeItem(const std::string& itemId, uint16_t quantity)
+{
+    for (auto it = inventory.begin(); it != inventory.end(); ++it)
+    {
+        if (it->itemId != itemId)
+        {
+            continue;
+        }
+        if (it->quantity < quantity)
+        {
+            return false;
+        }
+        it->quantity = static_cast<uint16_t>(it->quantity - quantity);
+        if (it->quantity == 0)
+        {
+            inventory.erase(it);
+        }
+        return true;
+    }
+    return false;
+}
+
+uint16_t CharacterState::itemQuantity(const std::string& itemId) const
+{
+    for (const auto& item : inventory)
+    {
+        if (item.itemId == itemId)
+        {
+            return item.quantity;
+        }
+    }
+    return 0;
+}
+
+std::string CharacterState::equippedItemInSlot(const std::string& slot) const
+{
+    const auto it = equipment.find(slot);
+    if (it == equipment.end())
+    {
+        return {};
+    }
+    return it->second;
 }
 
 bool CharacterState::knowsSpell(const std::string& spellId) const

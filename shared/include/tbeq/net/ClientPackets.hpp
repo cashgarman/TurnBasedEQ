@@ -132,6 +132,7 @@ struct EntityStatePayload
     std::string raceId;
     std::string classId;
     std::string appearanceId;
+    std::string equippedWeaponItemId;
 };
 
 struct EntitySnapshotPayload
@@ -280,6 +281,94 @@ struct SkillGainPayload
     std::string skillId;
     uint16_t oldLevel = 0;
     uint16_t newLevel = 0;
+    std::string message;
+};
+
+struct InventoryEntryPayload
+{
+    std::string itemId;
+    uint16_t quantity = 0;
+};
+
+struct EquipmentEntryPayload
+{
+    std::string slot;
+    std::string itemId;
+};
+
+struct InventorySnapshotPayload
+{
+    uint32_t gold = 0;
+    std::vector<InventoryEntryPayload> items;
+    std::vector<EquipmentEntryPayload> equipment;
+};
+
+struct EquipItemRequestPayload
+{
+    std::string itemId;
+};
+
+struct EquipItemResultPayload
+{
+    bool ok = false;
+    std::string message;
+};
+
+struct UnequipItemRequestPayload
+{
+    std::string slot;
+};
+
+struct UnequipItemResultPayload
+{
+    bool ok = false;
+    std::string message;
+};
+
+struct NpcInteractRequestPayload
+{
+    uint32_t npcEntityId = 0;
+};
+
+struct MerchantStockEntryPayload
+{
+    std::string itemId;
+    uint16_t quantity = 0;
+    uint32_t buyPrice = 0;
+    uint32_t sellPrice = 0;
+};
+
+struct MerchantOpenPayload
+{
+    uint32_t npcEntityId = 0;
+    std::string npcName;
+    std::vector<MerchantStockEntryPayload> stock;
+    std::vector<std::string> sellItemIds;
+};
+
+struct MerchantBuyRequestPayload
+{
+    uint32_t npcEntityId = 0;
+    std::string itemId;
+    uint16_t quantity = 1;
+};
+
+struct MerchantBuyResultPayload
+{
+    bool ok = false;
+    std::string message;
+};
+
+struct MerchantSellRequestPayload
+{
+    uint32_t npcEntityId = 0;
+    std::string itemId;
+    uint16_t quantity = 1;
+};
+
+struct MerchantSellResultPayload
+{
+    bool ok = false;
     std::string message;
 };
 

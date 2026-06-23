@@ -5,11 +5,14 @@ add_executable(tbeq_client
     net/ZoneClient.cpp
     render/procedural/TileGenerator.cpp
     render/procedural/SpriteGenerator.cpp
+    render/procedural/ItemIconGenerator.cpp
     render/TilemapRenderer.cpp
     render/EntityRenderer.cpp
     ui/GameWindow.cpp
     ui/WindowLayoutManager.cpp
     ui/combat/CombatWindow.cpp
+    ui/inventory/InventoryWindow.cpp
+    ui/merchant/MerchantWindow.cpp
     ui/debug/DebugMenu.cpp
     ui/debug/LogViewer.cpp
     ui/debug/UnitTestRunner.cpp

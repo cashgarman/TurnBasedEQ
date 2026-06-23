@@ -110,6 +110,8 @@ int main(int argc, char** argv)
     ok &= validateArrayFile(dataRoot / "tile_defs.json", {"id", "category", "collision"});
     ok &= validateArrayFile(dataRoot / "tile_styles.json", {"id", "masterSeed", "palette"});
     ok &= validateObjectFile(dataRoot / "entity_sprites.json", {"races", "classes", "npcRoles", "defaults"});
+    ok &= validateArrayFile(dataRoot / "items.json", {"id", "name"});
+    ok &= validateArrayFile(dataRoot / "npcs.json", {"id", "name", "roles"});
     ok &= validateObjectFile(dataRoot / "worldgen/world_rules.json", {"zoneRoles", "validatorRules"});
     ok &= validateObjectFile(dataRoot / "worldgen/zone_templates.json", {"city", "hunting", "dungeon"});
 

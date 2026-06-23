@@ -31,6 +31,9 @@
 #include "ui/GameWindow.hpp"
 #include "ui/WindowLayoutManager.hpp"
 #include "ui/combat/CombatWindow.hpp"
+#include "ui/inventory/InventoryWindow.hpp"
+#include "ui/merchant/MerchantWindow.hpp"
+#include "tbeq/content/ItemCatalog.hpp"
 
 #if TBEQ_ENABLE_DEBUG_MENU
 #include "ui/debug/DebugMenu.hpp"
@@ -77,6 +80,7 @@ struct ClientApp
 
     asio::io_context io;
     tbeq::world::TileDefCatalog tileDefs;
+    tbeq::content::ItemCatalog itemCatalog;
     tbeq::render::TileStyleCatalog styleCatalog;
     tbeq::render::EntitySpriteCatalog entitySpriteCatalog;
     std::unique_ptr<tbeq::client::ZoneClient> zoneClient;
@@ -94,8 +98,15 @@ struct ClientApp
     tbeq::ui::GameWindow chatWindow{"chat", "Chat", 360.0f, 220.0f};
     tbeq::ui::GameWindow minimapWindow{"minimap", "Minimap", 160.0f, 160.0f};
     tbeq::ui::GameWindow combatWindowPanel{"combat", "Combat", 420.0f, 360.0f};
+    tbeq::ui::GameWindow inventoryWindowPanel{"inventory", "Inventory", 360.0f, 320.0f};
+    tbeq::ui::GameWindow merchantWindowPanel{"merchant", "Merchant", 400.0f, 340.0f};
     tbeq::client::CombatWindow combatWindow;
+    tbeq::client::InventoryWindow inventoryWindow;
+    tbeq::client::MerchantWindow merchantWindow;
     bool combatVisible = false;
+    bool inventoryVisible = false;
+    bool merchantVisible = false;
+    uint32_t hudGold = 0;
     uint16_t hudHp = 100;
     uint16_t hudMaxHp = 100;
     uint16_t hudMana = 50;
@@ -168,6 +179,14 @@ struct ClientApp
             spdlog::error("Failed to load entity_sprites.json");
             return false;
         }
+        if (!itemCatalog.loadFromFile(dataRoot / "items.json"))
+        {
+            spdlog::error("Failed to load items.json");
+            return false;
+        }
+
+        inventoryWindow.setItemCatalog(&itemCatalog);
+        merchantWindow.setItemCatalog(&itemCatalog);
 
         tilemapRenderer = std::make_unique<tbeq::client::TilemapRenderer>(renderer);
         entityRenderer = std::make_unique<tbeq::client::EntityRenderer>(renderer);
@@ -175,6 +194,8 @@ struct ClientApp
         layoutManager.registerWindow(hudWindow);
         layoutManager.registerWindow(chatWindow);
         layoutManager.registerWindow(minimapWindow);
+        layoutManager.registerWindow(inventoryWindowPanel);
+        layoutManager.registerWindow(merchantWindowPanel);
 #if TBEQ_ENABLE_DEBUG_MENU
         layoutManager.registerWindow(debugWindow);
 #endif
@@ -502,17 +523,30 @@ struct ClientApp
         return result;
     }
 
-    bool completeEnterZone(const LoginSession& loginSession)
+    void applyInventorySnapshot(const tbeq::net::InventorySnapshotPayload& snapshot)
     {
-        LoginProfiler profiler;
-        LoginProfiler::Scope scope(profiler, "enter_zone_main_thread");
-
-        zoneClient = std::make_unique<tbeq::client::ZoneClient>(io);
-        if (!zoneClient->connect(loginSession.zoneConnect.zoneHost, loginSession.zoneConnect.zonePort))
+        hudGold = snapshot.gold;
+        inventoryWindow.applySnapshot(snapshot);
+        std::string equippedWeapon;
+        for (const auto& entry : snapshot.equipment)
         {
-            statusMessage = "Failed to connect to zone server";
-            profiler.logSummary("enter_zone_failed");
-            return false;
+            if (entry.slot == "weapon")
+            {
+                equippedWeapon = entry.itemId;
+                break;
+            }
+        }
+        if (entityRenderer != nullptr)
+        {
+            entityRenderer->setLocalPlayerEquippedWeapon(equippedWeapon);
+        }
+    }
+
+    void wireZoneClientCallbacks()
+    {
+        if (zoneClient == nullptr)
+        {
+            return;
         }
 
         zoneClient->setChatCallback([this](const tbeq::net::ChatDeliverPayload& deliver)
@@ -574,6 +608,63 @@ struct ClientApp
             combatWindow.applySkillGain(gain);
             chatLines.push_back("[System] " + gain.message);
         });
+        zoneClient->setInventorySnapshotCallback([this](const tbeq::net::InventorySnapshotPayload& snapshot)
+        {
+            applyInventorySnapshot(snapshot);
+        });
+        zoneClient->setMerchantOpenCallback([this](const tbeq::net::MerchantOpenPayload& open)
+        {
+            merchantWindow.applyOpen(open);
+            merchantVisible = true;
+            chatLines.push_back("[System] Trading with " + open.npcName);
+        });
+    }
+
+    void interactWithNpc(uint32_t npcEntityId)
+    {
+        if (zoneClient == nullptr || npcEntityId == 0)
+        {
+            return;
+        }
+
+        zoneClient->interactNpc(npcEntityId);
+    }
+
+    void tryInteractNearbyNpc()
+    {
+        if (zoneClient == nullptr || entityRenderer == nullptr)
+        {
+            return;
+        }
+
+        const auto npcEntityId = entityRenderer->nearestNpcEntity(
+            zoneClient->playerTileX(),
+            zoneClient->playerTileY(),
+            2);
+        if (npcEntityId.has_value())
+        {
+            interactWithNpc(*npcEntityId);
+        }
+        else
+        {
+            chatLines.push_back("[System] No NPC nearby to interact with.");
+        }
+    }
+
+    bool completeEnterZone(const LoginSession& loginSession)
+    {
+        LoginProfiler profiler;
+        LoginProfiler::Scope scope(profiler, "enter_zone_main_thread");
+
+        zoneClient = std::make_unique<tbeq::client::ZoneClient>(io);
+        if (!zoneClient->connect(loginSession.zoneConnect.zoneHost, loginSession.zoneConnect.zonePort))
+        {
+            statusMessage = "Failed to connect to zone server";
+            profiler.logSummary("enter_zone_failed");
+            return false;
+        }
+
+        wireZoneClientCallbacks();
 
         if (!zoneClient->sessionResume(
                 loginSession.characterId,
@@ -594,6 +685,7 @@ struct ClientApp
         entityRenderer->clear();
         entityRenderer->setStyleCatalog(style);
         entityRenderer->setSpriteCatalog(&entitySpriteCatalog);
+        entityRenderer->setItemCatalog(&itemCatalog);
         entityRenderer->setLocalPlayer(
             zoneClient->playerEntityId(),
             loginSession.characterName.empty() ? characterNameBuffer : loginSession.characterName,
@@ -605,6 +697,8 @@ struct ClientApp
         {
             entityRenderer->applySnapshot(*snapshot);
         }
+
+        applyInventorySnapshot(zoneClient->inventorySnapshot());
 
         cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
         cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
@@ -667,6 +761,19 @@ struct ClientApp
 #endif
         else if (state == ClientState::InZone && event.type == SDL_KEYDOWN && zoneClient != nullptr && !combatWindow.isActive())
         {
+            if (event.key.keysym.sym == SDLK_i)
+            {
+                inventoryVisible = !inventoryVisible;
+                inventoryWindowPanel.state().visible = inventoryVisible;
+                layoutManager.markDirty();
+                return;
+            }
+            if (event.key.keysym.sym == SDLK_n)
+            {
+                tryInteractNearbyNpc();
+                return;
+            }
+
             int32_t targetX = zoneClient->playerTileX();
             int32_t targetY = zoneClient->playerTileY();
             if (targetX == 0 && targetY == 0)
@@ -700,10 +807,7 @@ struct ClientApp
                     zoneClient->close();
                     zoneClient = std::make_unique<tbeq::client::ZoneClient>(io);
                     zoneClient->connect(transfer.zoneHost, transfer.zonePort);
-                    zoneClient->setChatCallback([this](const tbeq::net::ChatDeliverPayload& deliver)
-                    {
-                        chatLines.push_back("[Say] " + deliver.senderName + ": " + deliver.text);
-                    });
+                    wireZoneClientCallbacks();
                     if (zoneClient->sessionResume(session.characterId, session.sessionTokenHash, zoneSnapshot))
                     {
                         const auto* style = styleCatalog.find(zoneSnapshot.tileStyle);
@@ -712,6 +816,7 @@ struct ClientApp
                         entityRenderer->clear();
                         entityRenderer->setStyleCatalog(style);
                         entityRenderer->setSpriteCatalog(&entitySpriteCatalog);
+                        entityRenderer->setItemCatalog(&itemCatalog);
                         entityRenderer->setLocalPlayer(
                             zoneClient->playerEntityId(),
                             session.characterName.empty() ? characterNameBuffer : session.characterName,
@@ -719,6 +824,11 @@ struct ClientApp
                             session.classId,
                             zoneClient->playerTileX(),
                             zoneClient->playerTileY());
+                        while (auto snapshot = zoneClient->pollEntitySnapshot())
+                        {
+                            entityRenderer->applySnapshot(*snapshot);
+                        }
+                        applyInventorySnapshot(zoneClient->inventorySnapshot());
                         cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
                         cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
                         chatLines.push_back("[System] Transferred to " + zoneSnapshot.zoneName);
@@ -737,6 +847,24 @@ struct ClientApp
                 entityRenderer->updateLocalPlayerPosition(moveResult.tileX, moveResult.tileY);
                 cameraTileX = std::max(0, moveResult.tileX - 10);
                 cameraTileY = std::max(0, moveResult.tileY - 6);
+            }
+        }
+        else if (state == ClientState::InZone && event.type == SDL_MOUSEBUTTONDOWN
+            && event.button.button == SDL_BUTTON_LEFT
+            && zoneClient != nullptr
+            && entityRenderer != nullptr
+            && !combatWindow.isActive()
+            && !ImGui::GetIO().WantCaptureMouse)
+        {
+            const int tileSize = tbeq::render::TileGenerator::kTileSize;
+            const int mouseX = event.button.x;
+            const int mouseY = event.button.y;
+            const int32_t tileX = cameraTileX + mouseX / tileSize;
+            const int32_t tileY = cameraTileY + mouseY / tileSize;
+            const auto npcEntityId = entityRenderer->npcEntityAtTile(tileX, tileY);
+            if (npcEntityId.has_value())
+            {
+                interactWithNpc(*npcEntityId);
             }
         }
     }
@@ -855,7 +983,8 @@ struct ClientApp
                 ImVec2(-1.0f, 0.0f),
                 (std::to_string(hudHp) + " / " + std::to_string(hudMaxHp)).c_str());
             ImGui::Text("Mana: %u / %u", hudMana, hudMaxMana);
-            ImGui::TextUnformatted("WASD move | P use portal | F1 debug");
+            ImGui::Text("Gold: %u", hudGold);
+            ImGui::TextUnformatted("WASD move | I inventory | N interact | P portal | F1 debug");
         }
         if (hudWindow.syncFromImGui())
         {
@@ -944,6 +1073,39 @@ struct ClientApp
 
         combatWindow.draw(combatWindowPanel, combatVisible, width, height);
         if (combatVisible && combatWindowPanel.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+
+        inventoryWindow.draw(
+            inventoryWindowPanel,
+            inventoryVisible,
+            zoneClient.get(),
+            renderer,
+            width,
+            height,
+            [this](const std::string& line)
+            {
+                chatLines.push_back(line);
+            });
+        if (inventoryVisible && inventoryWindowPanel.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+
+        merchantWindow.draw(
+            merchantWindowPanel,
+            merchantVisible,
+            zoneClient.get(),
+            renderer,
+            zoneClient != nullptr ? zoneClient->inventorySnapshot() : tbeq::net::InventorySnapshotPayload{},
+            width,
+            height,
+            [this](const std::string& line)
+            {
+                chatLines.push_back(line);
+            });
+        if (merchantVisible && merchantWindowPanel.syncFromImGui())
         {
             layoutManager.markDirty();
         }

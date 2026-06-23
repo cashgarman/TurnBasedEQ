@@ -46,6 +46,7 @@ public:
     using FindAiCompanionsFn = std::function<std::vector<PlayerView>(const std::string& leaderCharacterId)>;
     using BroadcastFn = std::function<void(const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer)>;
     using PersistStateFn = std::function<void(const std::string& characterId, const CharacterState& state)>;
+    using SyncInventoryFn = std::function<void(const std::string& characterId)>;
 
     CombatManager(
         asio::io_context& io,
@@ -57,7 +58,8 @@ public:
         FindPlayerFn findPlayer,
         FindAiCompanionsFn findAiCompanions,
         BroadcastFn broadcast,
-        PersistStateFn persistState);
+        PersistStateFn persistState,
+        SyncInventoryFn syncInventory);
 
     bool tryStartSpawnCombat(PlayerView& player, const std::string& mobTable);
     bool startDebugCombat(PlayerView& player, const std::vector<std::string>& mobIds);
@@ -118,6 +120,7 @@ private:
     FindAiCompanionsFn findAiCompanions_;
     BroadcastFn broadcast_;
     PersistStateFn persistState_;
+    SyncInventoryFn syncInventory_;
     combat::CombatInstance::Rng rng_;
     std::unordered_map<uint32_t, ActiveCombat> combats_;
     std::unordered_map<std::string, uint32_t> characterCombatIds_;

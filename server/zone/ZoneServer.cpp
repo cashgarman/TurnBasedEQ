@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 
 #include "tbeq/combat/CombatTypes.hpp"
+#include "tbeq/items/ItemRules.hpp"
 #include "tbeq/net/ClientPackets.hpp"
 #include "tbeq/net/PacketSerializer.hpp"
 #include "tbeq/net/ServerPackets.hpp"
@@ -69,6 +70,18 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         throw std::runtime_error("Failed to load class_combat_profiles.json");
     }
 
+    const auto itemsPath = std::filesystem::path(config.dataRoot) / "items.json";
+    if (!itemCatalog_.loadFromFile(itemsPath))
+    {
+        throw std::runtime_error("Failed to load items.json");
+    }
+
+    const auto npcsPath = std::filesystem::path(config.dataRoot) / "npcs.json";
+    if (!npcCatalog_.loadFromFile(npcsPath))
+    {
+        throw std::runtime_error("Failed to load npcs.json");
+    }
+
     if (!loadZoneData())
     {
         throw std::runtime_error("Failed to load zone data from database");
@@ -109,6 +122,13 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         [this](const std::string& characterId, const CharacterState& state)
         {
             persistPlayerState(characterId, state);
+        },
+        [this](const std::string& characterId)
+        {
+            if (PlayerEntity* player = findPlayerByCharacterId(characterId))
+            {
+                sendInventorySnapshot(*player);
+            }
         });
 
     spdlog::info(
@@ -330,6 +350,7 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         entity.tileY = player.tileY;
         entity.raceId = player.raceId;
         entity.classId = player.classId;
+        entity.equippedWeaponItemId = player.characterState.equippedItemInSlot("weapon");
         snapshot.entities.push_back(std::move(entity));
     }
 
@@ -499,6 +520,7 @@ void ZoneServer::handleWorldPacket(
             {
                 player.characterState.classId = player.classId;
             }
+            items::ItemRules::recomputeDerivedStats(player.characterState, itemCatalog_);
             player.tileX = static_cast<int32_t>(std::lround(loadResponse.posX));
             player.tileY = static_cast<int32_t>(std::lround(loadResponse.posY));
             player.entityId = allocateEntityId();
@@ -609,6 +631,21 @@ void ZoneServer::handleClientPacket(
     case net::ClientPacketType::DebugCommandRequest:
         handleDebugCommand(connection, packet);
         break;
+    case net::ClientPacketType::EquipItemRequest:
+        handleEquipItem(connection, packet);
+        break;
+    case net::ClientPacketType::UnequipItemRequest:
+        handleUnequipItem(connection, packet);
+        break;
+    case net::ClientPacketType::NpcInteractRequest:
+        handleNpcInteract(connection, packet);
+        break;
+    case net::ClientPacketType::MerchantBuyRequest:
+        handleMerchantBuy(connection, packet);
+        break;
+    case net::ClientPacketType::MerchantSellRequest:
+        handleMerchantSell(connection, packet);
+        break;
     case net::ClientPacketType::Ping:
     {
         net::ClientPingPayload ping;
@@ -693,6 +730,8 @@ void ZoneServer::handleSessionResume(
         packet.header.sequenceId + 2,
         net::serialize(buildEntitySnapshot()),
         request.sessionResumeToken);
+
+    sendInventorySnapshot(*player);
 
     broadcastEntitySnapshot(selfEntityId);
 }
@@ -1159,6 +1198,51 @@ void ZoneServer::handleDebugCommand(
             level = static_cast<uint16_t>(std::stoul(request.args[1]));
         }
         response.ok = spawnAiCompanion(*player, classId, level, response.message);
+        break;
+    }
+    case net::DebugCommand::GrantItem:
+    {
+        if (player == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        if (request.args.empty())
+        {
+            response.message = "Usage: grant_item <itemId> [quantity]";
+            break;
+        }
+        const content::ItemDef* item = itemCatalog_.findItem(request.args[0]);
+        if (item == nullptr)
+        {
+            response.message = "Unknown item id";
+            break;
+        }
+        uint16_t quantity = 1;
+        if (request.args.size() >= 2)
+        {
+            quantity = static_cast<uint16_t>(std::stoul(request.args[1]));
+        }
+        player->characterState.addItem(item->id, quantity);
+        persistPlayerState(player->characterId, player->characterState);
+        sendInventorySnapshot(*player);
+        response.ok = true;
+        response.message = "Granted " + std::to_string(quantity) + " x " + item->name;
+        break;
+    }
+    case net::DebugCommand::EquipItem:
+    {
+        if (player == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        if (request.args.empty())
+        {
+            response.message = "Usage: equip_item <itemId>";
+            break;
+        }
+        response.ok = tryEquipItem(*player, request.args[0], response.message);
         break;
     }
     default:

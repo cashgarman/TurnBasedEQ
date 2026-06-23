@@ -19,7 +19,8 @@ CombatManager::CombatManager(
     FindPlayerFn findPlayer,
     FindAiCompanionsFn findAiCompanions,
     BroadcastFn broadcast,
-    PersistStateFn persistState)
+    PersistStateFn persistState,
+    SyncInventoryFn syncInventory)
     : io_(io)
     , skillResolver_(skillResolver)
     , mobCatalog_(mobCatalog)
@@ -31,6 +32,7 @@ CombatManager::CombatManager(
     , findAiCompanions_(std::move(findAiCompanions))
     , broadcast_(std::move(broadcast))
     , persistState_(std::move(persistState))
+    , syncInventory_(std::move(syncInventory))
     , rng_(std::random_device{}())
 {
 }
@@ -198,6 +200,11 @@ void CombatManager::grantLoot(PlayerView& player, const std::vector<combat::Comb
         event.value = roll.quantity;
         event.message = "You receive " + std::to_string(roll.quantity) + " x " + roll.itemId + ".";
         broadcast_({player.characterId}, net::ClientPacketType::CombatEvent, net::serialize(event));
+    }
+
+    if (syncInventory_)
+    {
+        syncInventory_(player.characterId);
     }
 }
 

@@ -94,6 +94,17 @@ bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionResultP
 bool deserializeClientPacket(const SerializedPacket& packet, CharacterVitalsPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, MeditateResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, SkillGainPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, InventorySnapshotPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, EquipItemRequestPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, EquipItemResultPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, UnequipItemRequestPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, UnequipItemResultPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, NpcInteractRequestPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantOpenPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantBuyRequestPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantBuyResultPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellRequestPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandRequestPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandResponsePayload& out);
 
@@ -149,6 +160,20 @@ ByteWriter serialize(const SubmitActionResultPayload& payload);
 ByteWriter serialize(const CharacterVitalsPayload& payload);
 ByteWriter serialize(const MeditateResultPayload& payload);
 ByteWriter serialize(const SkillGainPayload& payload);
+ByteWriter serialize(const InventoryEntryPayload& payload);
+ByteWriter serialize(const EquipmentEntryPayload& payload);
+ByteWriter serialize(const InventorySnapshotPayload& payload);
+ByteWriter serialize(const EquipItemRequestPayload& payload);
+ByteWriter serialize(const EquipItemResultPayload& payload);
+ByteWriter serialize(const UnequipItemRequestPayload& payload);
+ByteWriter serialize(const UnequipItemResultPayload& payload);
+ByteWriter serialize(const NpcInteractRequestPayload& payload);
+ByteWriter serialize(const MerchantStockEntryPayload& payload);
+ByteWriter serialize(const MerchantOpenPayload& payload);
+ByteWriter serialize(const MerchantBuyRequestPayload& payload);
+ByteWriter serialize(const MerchantBuyResultPayload& payload);
+ByteWriter serialize(const MerchantSellRequestPayload& payload);
+ByteWriter serialize(const MerchantSellResultPayload& payload);
 ByteWriter serialize(const DebugCommandRequestPayload& payload);
 ByteWriter serialize(const DebugCommandResponsePayload& payload);
 

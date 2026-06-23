@@ -2,26 +2,99 @@
   {
     "id": "rat_tail",
     "name": "Rat Tail",
-    "stackSize": 20
+    "stackSize": 20,
+    "vendorValue": 2
   },
   {
     "id": "boar_hide",
     "name": "Boar Hide",
-    "stackSize": 10
-  },
-  {
-    "id": "rusty_dagger",
-    "name": "Rusty Dagger",
-    "stackSize": 1
+    "stackSize": 10,
+    "vendorValue": 5
   },
   {
     "id": "goblin_tooth",
     "name": "Goblin Tooth",
-    "stackSize": 20
+    "stackSize": 20,
+    "vendorValue": 3
+  },
+  {
+    "id": "rusty_dagger",
+    "name": "Rusty Dagger",
+    "stackSize": 1,
+    "slot": "weapon",
+    "rarity": "common",
+    "vendorValue": 18,
+    "requiredLevel": 1,
+    "allowedClasses": ["warrior", "rogue"],
+    "weaponSkill": "1h_pierce",
+    "spriteTint": "#8a8a8a",
+    "iconShape": "dagger",
+    "stats": {"offense": 2}
   },
   {
     "id": "chief_blade",
     "name": "Chief Blade",
-    "stackSize": 1
+    "stackSize": 1,
+    "slot": "weapon",
+    "rarity": "uncommon",
+    "vendorValue": 45,
+    "requiredLevel": 3,
+    "allowedClasses": ["warrior", "rogue"],
+    "weaponSkill": "1h_slash",
+    "spriteTint": "#c0a060",
+    "iconShape": "sword",
+    "stats": {"offense": 5, "hp": 5}
+  },
+  {
+    "id": "leather_cap",
+    "name": "Leather Cap",
+    "stackSize": 1,
+    "slot": "head",
+    "rarity": "common",
+    "vendorValue": 12,
+    "requiredLevel": 1,
+    "spriteTint": "#6b4f2a",
+    "iconShape": "helm",
+    "stats": {"defense": 1}
+  },
+  {
+    "id": "padded_tunic",
+    "name": "Padded Tunic",
+    "stackSize": 1,
+    "slot": "chest",
+    "rarity": "common",
+    "vendorValue": 20,
+    "requiredLevel": 1,
+    "spriteTint": "#4a6b8a",
+    "iconShape": "chest",
+    "stats": {"defense": 2, "hp": 4}
+  },
+  {
+    "id": "iron_gauntlets",
+    "name": "Iron Gauntlets",
+    "stackSize": 1,
+    "slot": "hands",
+    "rarity": "uncommon",
+    "vendorValue": 24,
+    "requiredLevel": 2,
+    "allowedClasses": ["warrior", "cleric"],
+    "spriteTint": "#909090",
+    "iconShape": "gloves",
+    "stats": {"defense": 2, "offense": 1},
+    "requiredSkill": {"id": "offense", "level": 5}
+  },
+  {
+    "id": "apprentice_staff",
+    "name": "Apprentice Staff",
+    "stackSize": 1,
+    "slot": "weapon",
+    "rarity": "common",
+    "vendorValue": 16,
+    "requiredLevel": 1,
+    "allowedClasses": ["cleric", "wizard"],
+    "weaponSkill": "1h_blunt",
+    "spriteTint": "#7a5a40",
+    "iconShape": "staff",
+    "stats": {"mana": 6}
   }
 ]

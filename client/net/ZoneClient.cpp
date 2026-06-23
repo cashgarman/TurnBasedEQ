@@ -176,6 +176,18 @@ bool ZoneClient::requestZoneTiles(net::ZoneSnapshotPayload& snapshot)
                 pendingEntitySnapshots_.push_back(std::move(entities));
             }
         }
+        else if (type == net::ClientPacketType::InventorySnapshot)
+        {
+            net::InventorySnapshotPayload inventory;
+            if (net::deserializeClientPacket(*packet, inventory))
+            {
+                inventorySnapshot_ = std::move(inventory);
+                if (inventorySnapshotCallback_)
+                {
+                    inventorySnapshotCallback_(inventorySnapshot_);
+                }
+            }
+        }
     }
 
     spdlog::error("[login] timed out waiting for ZoneTileGrid");
@@ -269,6 +281,18 @@ bool ZoneClient::sessionResume(
                 pendingEntitySnapshots_.push_back(std::move(entities));
             }
         }
+        else if (type == net::ClientPacketType::InventorySnapshot)
+        {
+            net::InventorySnapshotPayload inventory;
+            if (net::deserializeClientPacket(*packet, inventory))
+            {
+                inventorySnapshot_ = std::move(inventory);
+                if (inventorySnapshotCallback_)
+                {
+                    inventorySnapshotCallback_(inventorySnapshot_);
+                }
+            }
+        }
     }
 
     const auto drainDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
@@ -294,6 +318,18 @@ bool ZoneClient::sessionResume(
             if (net::deserializeClientPacket(*packet, entities))
             {
                 pendingEntitySnapshots_.push_back(std::move(entities));
+            }
+        }
+        else if (type == net::ClientPacketType::InventorySnapshot)
+        {
+            net::InventorySnapshotPayload inventory;
+            if (net::deserializeClientPacket(*packet, inventory))
+            {
+                inventorySnapshot_ = std::move(inventory);
+                if (inventorySnapshotCallback_)
+                {
+                    inventorySnapshotCallback_(inventorySnapshot_);
+                }
             }
         }
         else
@@ -587,6 +623,64 @@ void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
         }
         break;
     }
+    case net::ClientPacketType::InventorySnapshot:
+    {
+        net::InventorySnapshotPayload inventory;
+        if (net::deserializeClientPacket(packet, inventory))
+        {
+            inventorySnapshot_ = std::move(inventory);
+            if (inventorySnapshotCallback_)
+            {
+                inventorySnapshotCallback_(inventorySnapshot_);
+            }
+        }
+        break;
+    }
+    case net::ClientPacketType::EquipItemResult:
+    {
+        net::EquipItemResultPayload result;
+        if (net::deserializeClientPacket(packet, result) && equipItemResultCallback_)
+        {
+            equipItemResultCallback_(result);
+        }
+        break;
+    }
+    case net::ClientPacketType::UnequipItemResult:
+    {
+        net::UnequipItemResultPayload result;
+        if (net::deserializeClientPacket(packet, result) && unequipItemResultCallback_)
+        {
+            unequipItemResultCallback_(result);
+        }
+        break;
+    }
+    case net::ClientPacketType::MerchantOpen:
+    {
+        net::MerchantOpenPayload open;
+        if (net::deserializeClientPacket(packet, open) && merchantOpenCallback_)
+        {
+            merchantOpenCallback_(open);
+        }
+        break;
+    }
+    case net::ClientPacketType::MerchantBuyResult:
+    {
+        net::MerchantBuyResultPayload result;
+        if (net::deserializeClientPacket(packet, result) && merchantBuyResultCallback_)
+        {
+            merchantBuyResultCallback_(result);
+        }
+        break;
+    }
+    case net::ClientPacketType::MerchantSellResult:
+    {
+        net::MerchantSellResultPayload result;
+        if (net::deserializeClientPacket(packet, result) && merchantSellResultCallback_)
+        {
+            merchantSellResultCallback_(result);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -677,6 +771,215 @@ void ZoneClient::setVitalsCallback(VitalsCallback callback)
 void ZoneClient::setSkillGainCallback(SkillGainCallback callback)
 {
     skillGainCallback_ = std::move(callback);
+}
+
+void ZoneClient::setInventorySnapshotCallback(InventorySnapshotCallback callback)
+{
+    inventorySnapshotCallback_ = std::move(callback);
+}
+
+void ZoneClient::setEquipItemResultCallback(EquipItemResultCallback callback)
+{
+    equipItemResultCallback_ = std::move(callback);
+}
+
+void ZoneClient::setUnequipItemResultCallback(UnequipItemResultCallback callback)
+{
+    unequipItemResultCallback_ = std::move(callback);
+}
+
+void ZoneClient::setMerchantOpenCallback(MerchantOpenCallback callback)
+{
+    merchantOpenCallback_ = std::move(callback);
+}
+
+void ZoneClient::setMerchantBuyResultCallback(MerchantBuyResultCallback callback)
+{
+    merchantBuyResultCallback_ = std::move(callback);
+}
+
+void ZoneClient::setMerchantSellResultCallback(MerchantSellResultCallback callback)
+{
+    merchantSellResultCallback_ = std::move(callback);
+}
+
+bool ZoneClient::equipItem(const std::string& itemId, net::EquipItemResultPayload& outResult)
+{
+    net::EquipItemRequestPayload request;
+    request.itemId = itemId;
+    if (!sendPacket(net::ClientPacketType::EquipItemRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::EquipItemResult)
+        {
+            if (!net::deserializeClientPacket(*packet, outResult))
+            {
+                return false;
+            }
+            return outResult.ok;
+        }
+    }
+
+    return false;
+}
+
+bool ZoneClient::unequipItem(const std::string& slot, net::UnequipItemResultPayload& outResult)
+{
+    net::UnequipItemRequestPayload request;
+    request.slot = slot;
+    if (!sendPacket(net::ClientPacketType::UnequipItemRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::UnequipItemResult)
+        {
+            if (!net::deserializeClientPacket(*packet, outResult))
+            {
+                return false;
+            }
+            return outResult.ok;
+        }
+    }
+
+    return false;
+}
+
+bool ZoneClient::interactNpc(uint32_t npcEntityId)
+{
+    net::NpcInteractRequestPayload request;
+    request.npcEntityId = npcEntityId;
+    return sendPacket(net::ClientPacketType::NpcInteractRequest, net::serialize(request), sessionTokenHash_);
+}
+
+bool ZoneClient::merchantBuy(
+    uint32_t npcEntityId,
+    const std::string& itemId,
+    uint16_t quantity,
+    net::MerchantBuyResultPayload& outResult)
+{
+    net::MerchantBuyRequestPayload request;
+    request.npcEntityId = npcEntityId;
+    request.itemId = itemId;
+    request.quantity = quantity;
+    if (!sendPacket(net::ClientPacketType::MerchantBuyRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::MerchantBuyResult)
+        {
+            if (!net::deserializeClientPacket(*packet, outResult))
+            {
+                return false;
+            }
+            return outResult.ok;
+        }
+    }
+
+    return false;
+}
+
+bool ZoneClient::merchantSell(
+    uint32_t npcEntityId,
+    const std::string& itemId,
+    uint16_t quantity,
+    net::MerchantSellResultPayload& outResult)
+{
+    net::MerchantSellRequestPayload request;
+    request.npcEntityId = npcEntityId;
+    request.itemId = itemId;
+    request.quantity = quantity;
+    if (!sendPacket(net::ClientPacketType::MerchantSellRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::MerchantSellResult)
+        {
+            if (!net::deserializeClientPacket(*packet, outResult))
+            {
+                return false;
+            }
+            return outResult.ok;
+        }
+    }
+
+    return false;
 }
 
 } // namespace tbeq::client

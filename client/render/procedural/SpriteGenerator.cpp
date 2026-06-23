@@ -252,7 +252,8 @@ std::vector<uint8_t> SpriteGenerator::generateFrame(
     const std::string& appearanceId,
     const TileStyleProfile& style,
     const EntitySpriteCatalog& catalog,
-    int frameIndex) const
+    int frameIndex,
+    const std::string& weaponTintHex) const
 {
     const Rgba base = parseHexColor(style.baseColor);
     const Rgba accent = parseHexColor(style.accentColor);
@@ -353,6 +354,32 @@ std::vector<uint8_t> SpriteGenerator::generateFrame(
             pixels[index + 1] = color.g;
             pixels[index + 2] = color.b;
             pixels[index + 3] = color.a;
+        }
+    }
+
+    if (!weaponTintHex.empty() && entityType == 0)
+    {
+        const Rgba weaponColor = parseHexColor(weaponTintHex);
+        const int weaponLeft = bodyRight + 2;
+        const int weaponRight = bodyRight + 5;
+        const int weaponTop = armTop;
+        const int weaponBottom = armBottom + 2;
+        for (int y = 0; y < kSpriteSize; ++y)
+        {
+            for (int x = 0; x < kSpriteSize; ++x)
+            {
+                const int drawY = y - bobOffset;
+                if (!inRect(x, drawY, weaponLeft, weaponTop, weaponRight, weaponBottom))
+                {
+                    continue;
+                }
+
+                const std::size_t index = static_cast<std::size_t>((y * kSpriteSize + x) * 4);
+                pixels[index + 0] = weaponColor.r;
+                pixels[index + 1] = weaponColor.g;
+                pixels[index + 2] = weaponColor.b;
+                pixels[index + 3] = 255;
+            }
         }
     }
 

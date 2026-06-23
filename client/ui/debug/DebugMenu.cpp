@@ -70,6 +70,30 @@ void DebugMenu::drawCheats(
         zoneClient->sendDebugCommand(tbeq::net::DebugCommand::ForceCombatEnd, {}, response);
         appendLogLine("[Debug] " + response.message);
     }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Item cheats");
+    static char grantItemBuffer[64] = "rusty_dagger";
+    ImGui::InputText("Item id", grantItemBuffer, sizeof(grantItemBuffer));
+    if (ImGui::Button("Grant item"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(
+            tbeq::net::DebugCommand::GrantItem,
+            {grantItemBuffer, "1"},
+            response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Equip item"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(
+            tbeq::net::DebugCommand::EquipItem,
+            {grantItemBuffer},
+            response);
+        appendLogLine("[Debug] " + response.message);
+    }
 }
 
 void DebugMenu::update(

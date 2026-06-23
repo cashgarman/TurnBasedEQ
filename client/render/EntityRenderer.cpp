@@ -1,6 +1,7 @@
 #include "render/EntityRenderer.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace tbeq::client
 {
@@ -23,6 +24,11 @@ void EntityRenderer::setStyleCatalog(const render::TileStyleProfile* style)
 void EntityRenderer::setSpriteCatalog(const render::EntitySpriteCatalog* catalog)
 {
     catalog_ = catalog;
+}
+
+void EntityRenderer::setItemCatalog(const content::ItemCatalog* catalog)
+{
+    itemCatalog_ = catalog;
 }
 
 void EntityRenderer::clear()
@@ -89,6 +95,17 @@ void EntityRenderer::updateLocalPlayerPosition(int32_t tileX, int32_t tileY)
     mergeLocalPlayer();
 }
 
+void EntityRenderer::setLocalPlayerEquippedWeapon(const std::string& itemId)
+{
+    if (!hasLocalPlayer_)
+    {
+        return;
+    }
+
+    localPlayer_.equippedWeaponItemId = itemId;
+    mergeLocalPlayer();
+}
+
 void EntityRenderer::mergeLocalPlayer()
 {
     if (!hasLocalPlayer_)
@@ -109,6 +126,7 @@ void EntityRenderer::applySnapshot(const net::EntitySnapshotPayload& snapshot)
         visual.raceId = entity.raceId;
         visual.classId = entity.classId;
         visual.appearanceId = entity.appearanceId;
+        visual.equippedWeaponItemId = entity.equippedWeaponItemId;
         visual.tileX = entity.tileX;
         visual.tileY = entity.tileY;
         visual.isLocalPlayer = hasLocalPlayer_ && entity.entityId == localPlayer_.entityId;
@@ -139,11 +157,22 @@ SDL_Texture* EntityRenderer::textureForEntity(const EntityVisual& entity, int fr
         entity.raceId,
         entity.classId,
         entity.appearanceId,
-        frameIndex};
+        frameIndex,
+        entity.equippedWeaponItemId};
     const auto it = textures_.find(key);
     if (it != textures_.end())
     {
         return it->second;
+    }
+
+    std::string weaponTintHex;
+    if (!entity.equippedWeaponItemId.empty() && itemCatalog_ != nullptr)
+    {
+        const content::ItemDef* weapon = itemCatalog_->findItem(entity.equippedWeaponItemId);
+        if (weapon != nullptr && !weapon->spriteTint.empty())
+        {
+            weaponTintHex = weapon->spriteTint;
+        }
     }
 
     const auto pixels = generator_.generateFrame(
@@ -153,7 +182,8 @@ SDL_Texture* EntityRenderer::textureForEntity(const EntityVisual& entity, int fr
         entity.appearanceId,
         *style_,
         *catalog_,
-        frameIndex);
+        frameIndex,
+        weaponTintHex);
 
     SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
         const_cast<uint8_t*>(pixels.data()),
@@ -267,6 +297,48 @@ std::vector<EntityRenderer::MinimapDot> EntityRenderer::minimapDots() const
             entity.isLocalPlayer});
     }
     return dots;
+}
+
+std::optional<uint32_t> EntityRenderer::npcEntityAtTile(int32_t tileX, int32_t tileY) const
+{
+    for (const auto& [_, entity] : entities_)
+    {
+        if (entity.entityType != 0 && entity.tileX == tileX && entity.tileY == tileY)
+        {
+            return entity.entityId;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<uint32_t> EntityRenderer::nearestNpcEntity(
+    int32_t tileX,
+    int32_t tileY,
+    int32_t maxDistance) const
+{
+    uint32_t bestEntityId = 0;
+    int32_t bestDistance = maxDistance + 1;
+
+    for (const auto& [_, entity] : entities_)
+    {
+        if (entity.entityType == 0)
+        {
+            continue;
+        }
+
+        const int32_t distance = std::abs(entity.tileX - tileX) + std::abs(entity.tileY - tileY);
+        if (distance <= maxDistance && distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestEntityId = entity.entityId;
+        }
+    }
+
+    if (bestEntityId == 0)
+    {
+        return std::nullopt;
+    }
+    return bestEntityId;
 }
 
 } // namespace tbeq::client

@@ -192,8 +192,8 @@ GeneratedZone WorldGenerator::buildCityZone() const
             64,
             "To Hunting Grounds"});
 
-    zone.npcSlots.push_back(GeneratedZone::NpcSlot{"merchant", 24, 28, "merchant_starter_1"});
-    zone.npcSlots.push_back(GeneratedZone::NpcSlot{"merchant", 38, 28, "merchant_starter_2"});
+    zone.npcSlots.push_back(GeneratedZone::NpcSlot{"merchant", 24, 28, "starter_city_merchant_1"});
+    zone.npcSlots.push_back(GeneratedZone::NpcSlot{"merchant", 38, 28, "starter_city_merchant_2"});
     zone.npcSlots.push_back(GeneratedZone::NpcSlot{"lore", 30, 36, "lorekeeper_starter_1"});
     zone.npcSlots.push_back(GeneratedZone::NpcSlot{"lore", 34, 36, "lorekeeper_starter_2"});
     zone.npcSlots.push_back(GeneratedZone::NpcSlot{"lore", 32, 40, "lorekeeper_starter_3"});

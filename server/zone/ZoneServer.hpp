@@ -15,7 +15,9 @@
 #include "net/TcpConnection.hpp"
 #include "tbeq/ai/ClassCombatProfile.hpp"
 #include "tbeq/content/AbilityCatalog.hpp"
+#include "tbeq/content/ItemCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
+#include "tbeq/content/NpcCatalog.hpp"
 #include "tbeq/content/SpellCatalog.hpp"
 #include "tbeq/core/CharacterState.hpp"
 #include "tbeq/core/Config.hpp"
@@ -142,6 +144,11 @@ private:
     void handleMoveIntent(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleSubmitAction(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleMeditate(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleEquipItem(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleUnequipItem(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleNpcInteract(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleMerchantBuy(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleMerchantSell(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleDebugCommand(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleChatMessage(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleUsePortal(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
@@ -155,6 +162,13 @@ private:
     void broadcastToPlayers(const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer);
     void persistPlayerState(const std::string& characterId, const CharacterState& state);
 
+    net::InventorySnapshotPayload buildInventorySnapshot(const CharacterState& state) const;
+    void sendInventorySnapshot(const PlayerEntity& player);
+    NpcEntity* findNpcByEntityId(uint32_t entityId);
+    bool isNearNpc(const PlayerEntity& player, const NpcEntity& npc) const;
+    bool tryEquipItem(PlayerEntity& player, const std::string& itemId, std::string& message);
+    bool tryUnequipItem(PlayerEntity& player, const std::string& slot, std::string& message);
+
     asio::io_context& io_;
     AppConfig config_;
     DebugCommandHandler debugHandler_;
@@ -162,6 +176,8 @@ private:
     content::MobCatalog mobCatalog_;
     content::SpellCatalog spellCatalog_;
     content::AbilityCatalog abilityCatalog_;
+    content::ItemCatalog itemCatalog_;
+    content::NpcCatalog npcCatalog_;
     ai::ClassCombatProfileCatalog aiProfiles_;
     db::Database database_;
     world::TileDefCatalog tileDefs_;

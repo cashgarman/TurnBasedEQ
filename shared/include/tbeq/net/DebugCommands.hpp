@@ -19,6 +19,8 @@ enum class DebugCommand : uint16_t
     UnlockAllSpells = 14,
     FillMana = 15,
     SpawnAi = 16,
+    GrantItem = 17,
+    EquipItem = 18,
     Unknown = 9999,
 };
 

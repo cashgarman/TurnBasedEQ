@@ -13,6 +13,9 @@ add_library(tbeq_shared
     src/content/MobCatalog.cpp
     src/content/SpellCatalog.cpp
     src/content/AbilityCatalog.cpp
+    src/content/ItemCatalog.cpp
+    src/content/NpcCatalog.cpp
+    src/items/ItemRules.cpp
     src/combat/CombatInstance.cpp
     src/ai/ClassCombatProfileCatalog.cpp
     src/ai/ClassCombatBrain.cpp

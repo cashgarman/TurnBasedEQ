@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -8,6 +9,7 @@
 #include <SDL.h>
 
 #include "procedural/SpriteGenerator.hpp"
+#include "tbeq/content/ItemCatalog.hpp"
 #include "tbeq/net/ClientPackets.hpp"
 
 namespace tbeq::client
@@ -24,6 +26,7 @@ public:
 
     void setStyleCatalog(const render::TileStyleProfile* style);
     void setSpriteCatalog(const render::EntitySpriteCatalog* catalog);
+    void setItemCatalog(const content::ItemCatalog* catalog);
     void clear();
 
     void applySnapshot(const net::EntitySnapshotPayload& snapshot);
@@ -35,8 +38,12 @@ public:
         int32_t tileX,
         int32_t tileY);
     void updateLocalPlayerPosition(int32_t tileX, int32_t tileY);
+    void setLocalPlayerEquippedWeapon(const std::string& itemId);
 
     void render(int cameraTileX, int cameraTileY, int viewTilesWide, int viewTilesHigh);
+
+    std::optional<uint32_t> npcEntityAtTile(int32_t tileX, int32_t tileY) const;
+    std::optional<uint32_t> nearestNpcEntity(int32_t tileX, int32_t tileY, int32_t maxDistance) const;
 
     struct MinimapDot
     {
@@ -57,6 +64,7 @@ private:
         std::string raceId;
         std::string classId;
         std::string appearanceId;
+        std::string equippedWeaponItemId;
         int32_t tileX = 0;
         int32_t tileY = 0;
         int32_t prevTileX = 0;
@@ -71,6 +79,7 @@ private:
         std::string classId;
         std::string appearanceId;
         int frameIndex = 0;
+        std::string equippedWeaponItemId;
 
         bool operator==(const TextureKey& other) const
         {
@@ -78,7 +87,8 @@ private:
                 && raceId == other.raceId
                 && classId == other.classId
                 && appearanceId == other.appearanceId
-                && frameIndex == other.frameIndex;
+                && frameIndex == other.frameIndex
+                && equippedWeaponItemId == other.equippedWeaponItemId;
         }
     };
 
@@ -89,8 +99,9 @@ private:
             return std::hash<std::string>{}(key.raceId)
                 ^ (std::hash<std::string>{}(key.classId) << 1)
                 ^ (std::hash<std::string>{}(key.appearanceId) << 2)
-                ^ (static_cast<std::size_t>(key.entityType) << 3)
-                ^ (static_cast<std::size_t>(key.frameIndex) << 4);
+                ^ (std::hash<std::string>{}(key.equippedWeaponItemId) << 3)
+                ^ (static_cast<std::size_t>(key.entityType) << 4)
+                ^ (static_cast<std::size_t>(key.frameIndex) << 5);
         }
     };
 
@@ -102,6 +113,7 @@ private:
     SDL_Renderer* renderer_ = nullptr;
     const render::TileStyleProfile* style_ = nullptr;
     const render::EntitySpriteCatalog* catalog_ = nullptr;
+    const content::ItemCatalog* itemCatalog_ = nullptr;
     render::SpriteGenerator generator_;
     std::unordered_map<uint32_t, EntityVisual> entities_;
     EntityVisual localPlayer_;

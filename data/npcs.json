@@ -1,0 +1,29 @@
+[
+  {
+    "id": "starter_city_merchant_1",
+    "name": "Grobb Provisioner",
+    "roles": ["merchant"],
+    "merchantStock": {
+      "buy": [
+        {"itemId": "rusty_dagger", "price": 18, "quantity": 5},
+        {"itemId": "apprentice_staff", "price": 16, "quantity": 5},
+        {"itemId": "leather_cap", "price": 12, "quantity": 3},
+        {"itemId": "padded_tunic", "price": 20, "quantity": 3},
+        {"itemId": "iron_gauntlets", "price": 24, "quantity": 2}
+      ],
+      "sellItemIds": ["rat_tail", "boar_hide", "goblin_tooth", "rusty_dagger"]
+    }
+  },
+  {
+    "id": "starter_city_merchant_2",
+    "name": "City Quartermaster",
+    "roles": ["merchant"],
+    "merchantStock": {
+      "buy": [
+        {"itemId": "chief_blade", "price": 45, "quantity": 1},
+        {"itemId": "padded_tunic", "price": 20, "quantity": 2}
+      ],
+      "sellItemIds": ["boar_hide", "chief_blade"]
+    }
+  }
+]

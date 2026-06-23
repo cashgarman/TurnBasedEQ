@@ -350,6 +350,7 @@ ByteWriter serialize(const EntityStatePayload& payload)
     writer.writeString(payload.raceId);
     writer.writeString(payload.classId);
     writer.writeString(payload.appearanceId);
+    writer.writeString(payload.equippedWeaponItemId);
     return writer;
 }
 
@@ -563,6 +564,149 @@ ByteWriter serialize(const SkillGainPayload& payload)
     writer.writeString(payload.skillId);
     writer.writeU16(payload.oldLevel);
     writer.writeU16(payload.newLevel);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const InventoryEntryPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.itemId);
+    writer.writeU16(payload.quantity);
+    return writer;
+}
+
+ByteWriter serialize(const EquipmentEntryPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.slot);
+    writer.writeString(payload.itemId);
+    return writer;
+}
+
+ByteWriter serialize(const InventorySnapshotPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.gold);
+    writer.writeU32(static_cast<uint32_t>(payload.items.size()));
+    for (const auto& item : payload.items)
+    {
+        const auto itemWriter = serialize(item);
+        writer.writeU32(static_cast<uint32_t>(itemWriter.data().size()));
+        for (uint8_t byte : itemWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    writer.writeU32(static_cast<uint32_t>(payload.equipment.size()));
+    for (const auto& entry : payload.equipment)
+    {
+        const auto entryWriter = serialize(entry);
+        writer.writeU32(static_cast<uint32_t>(entryWriter.data().size()));
+        for (uint8_t byte : entryWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    return writer;
+}
+
+ByteWriter serialize(const EquipItemRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.itemId);
+    return writer;
+}
+
+ByteWriter serialize(const EquipItemResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const UnequipItemRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.slot);
+    return writer;
+}
+
+ByteWriter serialize(const UnequipItemResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const NpcInteractRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.npcEntityId);
+    return writer;
+}
+
+ByteWriter serialize(const MerchantStockEntryPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.itemId);
+    writer.writeU16(payload.quantity);
+    writer.writeU32(payload.buyPrice);
+    writer.writeU32(payload.sellPrice);
+    return writer;
+}
+
+ByteWriter serialize(const MerchantOpenPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.npcEntityId);
+    writer.writeString(payload.npcName);
+    writer.writeU32(static_cast<uint32_t>(payload.stock.size()));
+    for (const auto& entry : payload.stock)
+    {
+        const auto entryWriter = serialize(entry);
+        writer.writeU32(static_cast<uint32_t>(entryWriter.data().size()));
+        for (uint8_t byte : entryWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    writer.writeStringVector(payload.sellItemIds);
+    return writer;
+}
+
+ByteWriter serialize(const MerchantBuyRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.npcEntityId);
+    writer.writeString(payload.itemId);
+    writer.writeU16(payload.quantity);
+    return writer;
+}
+
+ByteWriter serialize(const MerchantBuyResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const MerchantSellRequestPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.npcEntityId);
+    writer.writeString(payload.itemId);
+    writer.writeU16(payload.quantity);
+    return writer;
+}
+
+ByteWriter serialize(const MerchantSellResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
     writer.writeString(payload.message);
     return writer;
 }
@@ -948,6 +1092,14 @@ bool deserializeEntityState(ByteReader& reader, EntityStatePayload& out)
             return false;
         }
     }
+    out.equippedWeaponItemId.clear();
+    if (reader.hasRemaining())
+    {
+        if (!reader.readString(out.equippedWeaponItemId))
+        {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1302,6 +1454,227 @@ bool deserializeClientPacket(const SerializedPacket& packet, SkillGainPayload& o
         && reader.readU16(out.oldLevel)
         && reader.readU16(out.newLevel)
         && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, InventorySnapshotPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::InventorySnapshot))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    uint32_t itemCount = 0;
+    if (!reader.readU32(out.gold) || !reader.readU32(itemCount))
+    {
+        return false;
+    }
+
+    out.items.clear();
+    out.items.reserve(itemCount);
+    for (uint32_t i = 0; i < itemCount; ++i)
+    {
+        uint32_t entrySize = 0;
+        if (!reader.readU32(entrySize))
+        {
+            return false;
+        }
+        std::vector<uint8_t> entryBytes(entrySize);
+        for (uint32_t b = 0; b < entrySize; ++b)
+        {
+            uint8_t byte = 0;
+            if (!reader.readU8(byte))
+            {
+                return false;
+            }
+            entryBytes[b] = byte;
+        }
+        ByteReader entryReader(entryBytes);
+        InventoryEntryPayload entry;
+        if (!entryReader.readString(entry.itemId) || !entryReader.readU16(entry.quantity))
+        {
+            return false;
+        }
+        out.items.push_back(std::move(entry));
+    }
+
+    uint32_t equipmentCount = 0;
+    if (!reader.readU32(equipmentCount))
+    {
+        return false;
+    }
+    out.equipment.clear();
+    out.equipment.reserve(equipmentCount);
+    for (uint32_t i = 0; i < equipmentCount; ++i)
+    {
+        uint32_t entrySize = 0;
+        if (!reader.readU32(entrySize))
+        {
+            return false;
+        }
+        std::vector<uint8_t> entryBytes(entrySize);
+        for (uint32_t b = 0; b < entrySize; ++b)
+        {
+            uint8_t byte = 0;
+            if (!reader.readU8(byte))
+            {
+                return false;
+            }
+            entryBytes[b] = byte;
+        }
+        ByteReader entryReader(entryBytes);
+        EquipmentEntryPayload entry;
+        if (!entryReader.readString(entry.slot) || !entryReader.readString(entry.itemId))
+        {
+            return false;
+        }
+        out.equipment.push_back(std::move(entry));
+    }
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, EquipItemRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::EquipItemRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.itemId);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, EquipItemResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::EquipItemResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, UnequipItemRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::UnequipItemRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readString(out.slot);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, UnequipItemResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::UnequipItemResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, NpcInteractRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::NpcInteractRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readU32(out.npcEntityId);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantOpenPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MerchantOpen))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    uint32_t stockCount = 0;
+    if (!reader.readU32(out.npcEntityId)
+        || !reader.readString(out.npcName)
+        || !reader.readU32(stockCount))
+    {
+        return false;
+    }
+
+    out.stock.clear();
+    out.stock.reserve(stockCount);
+    for (uint32_t i = 0; i < stockCount; ++i)
+    {
+        uint32_t entrySize = 0;
+        if (!reader.readU32(entrySize))
+        {
+            return false;
+        }
+        std::vector<uint8_t> entryBytes(entrySize);
+        for (uint32_t b = 0; b < entrySize; ++b)
+        {
+            uint8_t byte = 0;
+            if (!reader.readU8(byte))
+            {
+                return false;
+            }
+            entryBytes[b] = byte;
+        }
+        ByteReader entryReader(entryBytes);
+        MerchantStockEntryPayload entry;
+        if (!entryReader.readString(entry.itemId)
+            || !entryReader.readU16(entry.quantity)
+            || !entryReader.readU32(entry.buyPrice)
+            || !entryReader.readU32(entry.sellPrice))
+        {
+            return false;
+        }
+        out.stock.push_back(std::move(entry));
+    }
+
+    return reader.readStringVector(out.sellItemIds);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantBuyRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MerchantBuyRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readU32(out.npcEntityId)
+        && reader.readString(out.itemId)
+        && reader.readU16(out.quantity);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantBuyResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MerchantBuyResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellRequestPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MerchantSellRequest))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readU32(out.npcEntityId)
+        && reader.readString(out.itemId)
+        && reader.readU16(out.quantity);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MerchantSellResult))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out)

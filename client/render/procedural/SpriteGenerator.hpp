@@ -59,7 +59,8 @@ public:
         const std::string& appearanceId,
         const TileStyleProfile& style,
         const EntitySpriteCatalog& catalog,
-        int frameIndex) const;
+        int frameIndex,
+        const std::string& weaponTintHex = "") const;
 };
 
 } // namespace tbeq::render

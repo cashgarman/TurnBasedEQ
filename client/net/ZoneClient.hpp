@@ -25,6 +25,12 @@ public:
     using CombatEndCallback = std::function<void(const net::CombatEndPayload&)>;
     using VitalsCallback = std::function<void(const net::CharacterVitalsPayload&)>;
     using SkillGainCallback = std::function<void(const net::SkillGainPayload&)>;
+    using InventorySnapshotCallback = std::function<void(const net::InventorySnapshotPayload&)>;
+    using EquipItemResultCallback = std::function<void(const net::EquipItemResultPayload&)>;
+    using UnequipItemResultCallback = std::function<void(const net::UnequipItemResultPayload&)>;
+    using MerchantOpenCallback = std::function<void(const net::MerchantOpenPayload&)>;
+    using MerchantBuyResultCallback = std::function<void(const net::MerchantBuyResultPayload&)>;
+    using MerchantSellResultCallback = std::function<void(const net::MerchantSellResultPayload&)>;
 
     explicit ZoneClient(asio::io_context& io);
 
@@ -43,6 +49,11 @@ public:
     bool sendSayChat(const std::string& text);
     bool submitAction(const net::SubmitActionPayload& action, net::SubmitActionResultPayload& outResult);
     bool sendDebugCommand(net::DebugCommand command, const std::vector<std::string>& args, net::DebugCommandResponsePayload& outResponse);
+    bool equipItem(const std::string& itemId, net::EquipItemResultPayload& outResult);
+    bool unequipItem(const std::string& slot, net::UnequipItemResultPayload& outResult);
+    bool interactNpc(uint32_t npcEntityId);
+    bool merchantBuy(uint32_t npcEntityId, const std::string& itemId, uint16_t quantity, net::MerchantBuyResultPayload& outResult);
+    bool merchantSell(uint32_t npcEntityId, const std::string& itemId, uint16_t quantity, net::MerchantSellResultPayload& outResult);
     void pollGameplayPackets();
 
     std::optional<net::EntitySnapshotPayload> pollEntitySnapshot();
@@ -53,6 +64,14 @@ public:
     void setCombatEndCallback(CombatEndCallback callback);
     void setVitalsCallback(VitalsCallback callback);
     void setSkillGainCallback(SkillGainCallback callback);
+    void setInventorySnapshotCallback(InventorySnapshotCallback callback);
+    void setEquipItemResultCallback(EquipItemResultCallback callback);
+    void setUnequipItemResultCallback(UnequipItemResultCallback callback);
+    void setMerchantOpenCallback(MerchantOpenCallback callback);
+    void setMerchantBuyResultCallback(MerchantBuyResultCallback callback);
+    void setMerchantSellResultCallback(MerchantSellResultCallback callback);
+
+    const net::InventorySnapshotPayload& inventorySnapshot() const { return inventorySnapshot_; }
 
     int32_t playerTileX() const { return playerTileX_; }
     int32_t playerTileY() const { return playerTileY_; }
@@ -79,6 +98,13 @@ private:
     CombatEndCallback combatEndCallback_;
     VitalsCallback vitalsCallback_;
     SkillGainCallback skillGainCallback_;
+    InventorySnapshotCallback inventorySnapshotCallback_;
+    EquipItemResultCallback equipItemResultCallback_;
+    UnequipItemResultCallback unequipItemResultCallback_;
+    MerchantOpenCallback merchantOpenCallback_;
+    MerchantBuyResultCallback merchantBuyResultCallback_;
+    MerchantSellResultCallback merchantSellResultCallback_;
+    net::InventorySnapshotPayload inventorySnapshot_;
     std::deque<net::EntitySnapshotPayload> pendingEntitySnapshots_;
 };
 
