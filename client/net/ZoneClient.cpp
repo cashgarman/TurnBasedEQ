@@ -887,7 +887,36 @@ bool ZoneClient::interactNpc(uint32_t npcEntityId)
 {
     net::NpcInteractRequestPayload request;
     request.npcEntityId = npcEntityId;
-    return sendPacket(net::ClientPacketType::NpcInteractRequest, net::serialize(request), sessionTokenHash_);
+    if (!sendPacket(net::ClientPacketType::NpcInteractRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 200)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::MerchantOpen)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool ZoneClient::merchantBuy(

@@ -124,11 +124,17 @@ void InventoryWindow::draw(
     renderer_ = renderer;
     if (!visible)
     {
+        window.state().visible = false;
         return;
     }
 
-    window.state().visible = true;
     const bool drawContent = window.begin(displayWidth, displayHeight);
+    visible = window.state().visible;
+    if (!visible)
+    {
+        window.end();
+        return;
+    }
     if (!drawContent)
     {
         window.end();
@@ -203,6 +209,7 @@ void InventoryWindow::draw(
     ImGui::EndChild();
 
     window.end();
+    visible = window.state().visible;
 }
 
 } // namespace tbeq::client

@@ -154,6 +154,7 @@ private:
     void handleUsePortal(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
 
     void deliverSayChat(const PlayerEntity& sender, const std::string& text);
+    void deliverSystemMessage(const PlayerEntity& player, const std::string& text);
     void tryAggro(PlayerEntity& player);
     CombatManager::PlayerView makePlayerView(PlayerEntity& player);
     CombatManager::PlayerView makeAiView(AiPartyMember& ai);

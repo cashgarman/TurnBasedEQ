@@ -29,9 +29,13 @@ class NpcCatalog
 public:
     bool loadFromFile(const std::filesystem::path& path);
     const NpcDef* findNpc(const std::string& npcId) const;
+    std::string resolveNpcId(const std::string& npcId) const;
 
 private:
+    void registerLegacyAliases();
+
     std::unordered_map<std::string, NpcDef> npcs_;
+    std::unordered_map<std::string, std::string> aliases_;
 };
 
 } // namespace tbeq::content

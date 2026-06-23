@@ -124,9 +124,16 @@ bool GameWindow::begin(int displayWidth, int displayHeight)
     const std::string windowLabel = state_.title + "##" + state_.id;
     imguiBegun_ = true;
     const bool opened = ImGui::Begin(windowLabel.c_str(), &open_, flags);
-    state_.visible = open_;
+    if (!open_)
+    {
+        state_.visible = false;
+    }
+    else
+    {
+        state_.visible = true;
+    }
 
-    return opened;
+    return opened && state_.visible;
 }
 
 void GameWindow::end()

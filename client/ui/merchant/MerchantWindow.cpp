@@ -101,11 +101,18 @@ void MerchantWindow::draw(
     if (!visible || npcEntityId_ == 0)
     {
         visible = false;
+        window.state().visible = false;
         return;
     }
 
-    window.state().visible = true;
     const bool drawContent = window.begin(displayWidth, displayHeight);
+    visible = window.state().visible;
+    if (!visible)
+    {
+        clear();
+        window.end();
+        return;
+    }
     if (!drawContent)
     {
         window.end();
@@ -200,10 +207,16 @@ void MerchantWindow::draw(
     if (ImGui::Button("Close"))
     {
         visible = false;
+        window.state().visible = false;
         clear();
     }
 
     window.end();
+    visible = window.state().visible;
+    if (!visible)
+    {
+        clear();
+    }
 }
 
 } // namespace tbeq::client

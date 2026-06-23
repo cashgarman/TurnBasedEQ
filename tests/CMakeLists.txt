@@ -41,6 +41,7 @@ add_executable(tbeq_tests_unit
     unit/shared/spell_combat_test.cpp
     unit/shared/equip_rules_test.cpp
     unit/shared/merchant_pricing_test.cpp
+    unit/shared/npc_catalog_test.cpp
     unit/ai/class_combat_brain_test.cpp
 )
 

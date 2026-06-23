@@ -171,7 +171,7 @@ void ZoneServer::spawnNpcEntities()
     for (const auto& slot : database_.loadZoneNpcSlots(config_.zoneId))
     {
         NpcEntity npc;
-        npc.npcId = slot.npcId.empty() ? slot.slotType : slot.npcId;
+        npc.npcId = npcCatalog_.resolveNpcId(slot.npcId.empty() ? slot.slotType : slot.npcId);
         npc.slotType = slot.slotType;
         npc.tileX = slot.tileX;
         npc.tileY = slot.tileY;
@@ -1261,6 +1261,25 @@ void ZoneServer::handleDebugCommand(
         packet.header.sequenceId,
         net::serialize(response),
         packet.header.sessionTokenHash);
+}
+
+void ZoneServer::deliverSystemMessage(const PlayerEntity& player, const std::string& text)
+{
+    if (!player.connected || player.connection == nullptr)
+    {
+        return;
+    }
+
+    net::ChatDeliverPayload deliver;
+    deliver.channel = static_cast<uint8_t>(ChatChannel::System);
+    deliver.senderName = "System";
+    deliver.text = text;
+    sendClientPacket(
+        player.connection,
+        net::ClientPacketType::ChatDeliver,
+        0,
+        net::serialize(deliver),
+        player.sessionTokenHash);
 }
 
 void ZoneServer::deliverSayChat(const PlayerEntity& sender, const std::string& text)

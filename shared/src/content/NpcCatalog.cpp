@@ -23,6 +23,7 @@ bool NpcCatalog::loadFromFile(const std::filesystem::path& path)
     }
 
     npcs_.clear();
+    aliases_.clear();
     for (const auto& entry : root)
     {
         NpcDef def;
@@ -65,21 +66,75 @@ bool NpcCatalog::loadFromFile(const std::filesystem::path& path)
 
         if (!def.id.empty())
         {
-            npcs_.emplace(def.id, std::move(def));
+            const std::string canonicalId = def.id;
+            npcs_.emplace(canonicalId, std::move(def));
+            if (entry.contains("aliases") && entry["aliases"].is_array())
+            {
+                for (const auto& alias : entry["aliases"])
+                {
+                    if (alias.is_string())
+                    {
+                        aliases_.emplace(alias.get<std::string>(), canonicalId);
+                    }
+                }
+            }
         }
     }
+
+    registerLegacyAliases();
 
     return true;
 }
 
+void NpcCatalog::registerLegacyAliases()
+{
+    const auto addAlias = [this](const std::string& alias, const std::string& canonicalId)
+    {
+        if (npcs_.find(canonicalId) != npcs_.end())
+        {
+            aliases_.emplace(alias, canonicalId);
+        }
+    };
+
+    addAlias("merchant_starter_1", "starter_city_merchant_1");
+    addAlias("merchant_starter_2", "starter_city_merchant_2");
+}
+
 const NpcDef* NpcCatalog::findNpc(const std::string& npcId) const
 {
-    const auto it = npcs_.find(npcId);
-    if (it == npcs_.end())
+    const auto direct = npcs_.find(npcId);
+    if (direct != npcs_.end())
     {
-        return nullptr;
+        return &direct->second;
     }
-    return &it->second;
+
+    const auto alias = aliases_.find(npcId);
+    if (alias != aliases_.end())
+    {
+        const auto resolved = npcs_.find(alias->second);
+        if (resolved != npcs_.end())
+        {
+            return &resolved->second;
+        }
+    }
+
+    return nullptr;
+}
+
+std::string NpcCatalog::resolveNpcId(const std::string& npcId) const
+{
+    if (npcs_.find(npcId) != npcs_.end())
+    {
+        return npcId;
+    }
+
+    const auto alias = aliases_.find(npcId);
+    if (alias != aliases_.end())
+    {
+        return alias->second;
+    }
+
+    return npcId;
 }
 
 } // namespace tbeq::content

@@ -16,7 +16,7 @@ namespace tbeq::server
 namespace
 {
 
-constexpr int32_t kNpcInteractRadius = 2;
+constexpr int32_t kNpcInteractRadius = 3;
 
 int32_t manhattanDistance(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
@@ -268,22 +268,31 @@ void ZoneServer::handleNpcInteract(
     NpcEntity* npc = findNpcByEntityId(request.npcEntityId);
     if (npc == nullptr)
     {
+        deliverSystemMessage(*player, "That NPC is not here.");
         return;
     }
     if (!isNearNpc(*player, *npc))
     {
+        deliverSystemMessage(*player, "Move closer to interact with that NPC.");
         return;
     }
 
-    const content::NpcDef* npcDef = npcCatalog_.findNpc(npc->npcId);
+    const std::string resolvedNpcId = npcCatalog_.resolveNpcId(npc->npcId);
+    const content::NpcDef* npcDef = npcCatalog_.findNpc(resolvedNpcId);
     if (npcDef == nullptr)
     {
+        spdlog::warn(
+            "NpcInteract failed: unknown npc id '{}' (resolved '{}')",
+            npc->npcId,
+            resolvedNpcId);
+        deliverSystemMessage(*player, "That NPC cannot be interacted with yet.");
         return;
     }
 
     const bool isMerchant = std::find(npcDef->roles.begin(), npcDef->roles.end(), "merchant") != npcDef->roles.end();
     if (!isMerchant)
     {
+        deliverSystemMessage(*player, npcDef->name + " has nothing to trade right now.");
         return;
     }
 

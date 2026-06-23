@@ -27,6 +27,7 @@
 #include "tbeq/core/Log.hpp"
 #include "tbeq/net/ClientPackets.hpp"
 #include "tbeq/net/PacketSerializer.hpp"
+#include "tbeq/social/ChatChannel.hpp"
 #include "tbeq/world/TileDefCatalog.hpp"
 #include "ui/GameWindow.hpp"
 #include "ui/WindowLayoutManager.hpp"
@@ -604,7 +605,14 @@ struct ClientApp
 
         zoneClient->setChatCallback([this](const tbeq::net::ChatDeliverPayload& deliver)
         {
-            chatLines.push_back("[Say] " + deliver.senderName + ": " + deliver.text);
+            if (deliver.channel == static_cast<uint8_t>(tbeq::ChatChannel::System))
+            {
+                chatLines.push_back("[System] " + deliver.text);
+            }
+            else
+            {
+                chatLines.push_back("[Say] " + deliver.senderName + ": " + deliver.text);
+            }
         });
         zoneClient->setCombatStartCallback([this](const tbeq::net::CombatStartPayload& start)
         {
@@ -669,6 +677,8 @@ struct ClientApp
         {
             merchantWindow.applyOpen(open);
             merchantVisible = true;
+            merchantWindowPanel.state().visible = true;
+            layoutManager.markDirty();
             chatLines.push_back("[System] Trading with " + open.npcName);
         });
     }
@@ -693,17 +703,20 @@ struct ClientApp
         const auto npcEntityId = entityRenderer->nearestNpcEntity(
             zoneClient->playerTileX(),
             zoneClient->playerTileY(),
-            2);
+            3);
         if (npcEntityId.has_value())
         {
             if (const auto plate = entityRenderer->nearestNpcNameplate(
                     zoneClient->playerTileX(),
                     zoneClient->playerTileY(),
-                    2))
+                    3))
             {
                 chatLines.push_back("[System] Interacting with " + plate->name + " (" + plate->role + ").");
             }
-            interactWithNpc(*npcEntityId);
+            if (!zoneClient->interactNpc(*npcEntityId))
+            {
+                chatLines.push_back("[System] Could not open merchant. Move closer or try again.");
+            }
         }
         else
         {
@@ -922,10 +935,13 @@ struct ClientApp
             const int mouseY = event.button.y;
             const int32_t tileX = cameraTileX + mouseX / tileSize;
             const int32_t tileY = cameraTileY + mouseY / tileSize;
-            const auto npcEntityId = entityRenderer->npcEntityAtTile(tileX, tileY);
+            const auto npcEntityId = entityRenderer->nearestNpcEntity(tileX, tileY, 1);
             if (npcEntityId.has_value())
             {
-                interactWithNpc(*npcEntityId);
+                if (!zoneClient->interactNpc(*npcEntityId))
+                {
+                    chatLines.push_back("[System] Could not open merchant. Move closer or try again.");
+                }
             }
         }
     }
@@ -1148,7 +1164,7 @@ struct ClientApp
         chatWindow.end();
 
         combatWindow.draw(combatWindowPanel, combatVisible, width, height);
-        if (combatVisible && combatWindowPanel.syncFromImGui())
+        if (combatWindowPanel.syncFromImGui())
         {
             layoutManager.markDirty();
         }
@@ -1164,7 +1180,7 @@ struct ClientApp
             {
                 chatLines.push_back(line);
             });
-        if (inventoryVisible && inventoryWindowPanel.syncFromImGui())
+        if (inventoryWindowPanel.syncFromImGui())
         {
             layoutManager.markDirty();
         }
@@ -1181,7 +1197,7 @@ struct ClientApp
             {
                 chatLines.push_back(line);
             });
-        if (merchantVisible && merchantWindowPanel.syncFromImGui())
+        if (merchantWindowPanel.syncFromImGui())
         {
             layoutManager.markDirty();
         }

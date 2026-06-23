@@ -219,12 +219,23 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
     if (!active_)
     {
         visible = false;
+        window.state().visible = false;
         return;
     }
 
-    visible = true;
-    window.state().visible = true;
+    if (!visible)
+    {
+        window.state().visible = false;
+        return;
+    }
+
     const bool drawContent = window.begin(displayWidth, displayHeight);
+    visible = window.state().visible;
+    if (!visible)
+    {
+        window.end();
+        return;
+    }
     if (!drawContent)
     {
         window.end();
@@ -372,6 +383,7 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
     ImGui::EndChild();
 
     window.end();
+    visible = window.state().visible;
 }
 
 } // namespace tbeq::client
