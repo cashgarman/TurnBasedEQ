@@ -106,6 +106,7 @@ bool deserializeClientPacket(const SerializedPacket& packet, MerchantBuyResultPa
 bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellRequestPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, NpcDialogOpenPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, SessionEndPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandRequestPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandResponsePayload& out);
 
@@ -176,6 +177,7 @@ ByteWriter serialize(const MerchantBuyResultPayload& payload);
 ByteWriter serialize(const MerchantSellRequestPayload& payload);
 ByteWriter serialize(const MerchantSellResultPayload& payload);
 ByteWriter serialize(const NpcDialogOpenPayload& payload);
+ByteWriter serialize(const SessionEndPayload& payload);
 ByteWriter serialize(const DebugCommandRequestPayload& payload);
 ByteWriter serialize(const DebugCommandResponsePayload& payload);
 

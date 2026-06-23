@@ -8,6 +8,7 @@ add_library(tbeq_shared
     src/auth/CharacterValidation.cpp
     src/worldgen/WorldGenerator.cpp
     src/worldgen/WorldValidator.cpp
+    src/worldgen/WorldBootstrap.cpp
     src/world/TileDefCatalog.cpp
     src/world/ZoneGrid.cpp
     src/content/MobCatalog.cpp

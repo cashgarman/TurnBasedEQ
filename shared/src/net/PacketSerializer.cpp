@@ -728,6 +728,12 @@ ByteWriter serialize(const NpcDialogOpenPayload& payload)
     return writer;
 }
 
+ByteWriter serialize(const SessionEndPayload& payload)
+{
+    (void)payload;
+    return ByteWriter{};
+}
+
 ByteWriter serialize(const DebugCommandRequestPayload& payload)
 {
     ByteWriter writer;
@@ -1734,6 +1740,12 @@ bool deserializeClientPacket(const SerializedPacket& packet, NpcDialogOpenPayloa
     return reader.readU32(out.npcEntityId)
         && reader.readString(out.npcName)
         && reader.readStringVector(out.lines);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SessionEndPayload& out)
+{
+    (void)out;
+    return packet.header.packetType == static_cast<uint16_t>(ClientPacketType::SessionEnd);
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out)

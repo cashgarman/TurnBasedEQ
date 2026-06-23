@@ -87,6 +87,22 @@ void drawWorldNameplates(
     }
 }
 
+void appendPortalHints(std::deque<std::string>& chatLines, const std::string& zoneId)
+{
+    if (zoneId == "starter_city")
+    {
+        chatLines.push_back("[System] Portal: north tile (32,8) -> Hunting Grounds (press P on portal pad).");
+    }
+    else if (zoneId == "starter_hunting")
+    {
+        chatLines.push_back("[System] Portals: south (64,8) -> Starter City; east (120,64) -> Goblin Cave.");
+    }
+    else if (zoneId == "starter_dungeon")
+    {
+        chatLines.push_back("[System] Portal: west tile (4,24) -> Hunting Grounds (press P on portal pad).");
+    }
+}
+
 enum class ClientState
 {
     Login,
@@ -192,7 +208,7 @@ struct ClientApp
             spdlog::info("Working directory set to {}", repoRoot.string());
         }
 
-        spdlog::info("Ensuring local WorldLogin and ZoneServer are running...");
+        spdlog::info("Ensuring local WorldLogin and zone servers are running...");
         if (!localCluster.ensureRunning())
         {
             statusMessage = "Could not reach or start local servers. Build server targets first.";
@@ -296,7 +312,7 @@ struct ClientApp
         logViewer.setSink(tbeq::getRingBufferSink());
 #endif
 
-        chatLines.push_back("[System] Welcome to TurnBasedEQ Phase 5. I inventory, L look, N interact, P portal.");
+        chatLines.push_back("[System] Welcome to TurnBasedEQ Phase 5.5. I inventory, L look, N interact, P portal.");
         spdlog::info("TurnBasedEQ client started");
         return true;
     }
@@ -304,8 +320,12 @@ struct ClientApp
     void shutdown()
     {
         layoutManager.save();
+        if (zoneClient && zoneClient->isConnected())
+        {
+            zoneClient->disconnectGracefully();
+        }
         zoneClient.reset();
-        localCluster.shutdownIfStarted();
+        localCluster.shutdownCluster();
 
         ImGui_ImplSDLRenderer2_Shutdown();
         ImGui_ImplSDL2_Shutdown();
@@ -841,7 +861,7 @@ struct ClientApp
         state = ClientState::InZone;
         statusMessage = "In zone: " + zoneSnapshot.zoneName;
         chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Gold outlines = merchants, blue = lorekeepers (N to interact).");
-        chatLines.push_back("[System] North portal at tile (32, 8): walk there and press P to leave the city.");
+        appendPortalHints(chatLines, zoneSnapshot.zoneId);
         profiler.logSummary("enter_zone");
         return true;
     }
@@ -946,7 +966,8 @@ struct ClientApp
             else if (event.key.keysym.sym == SDLK_p)
             {
                 tbeq::net::ZoneConnectInfoPayload transfer;
-                if (zoneClient->usePortal(transfer))
+                std::string portalError;
+                if (zoneClient->usePortal(transfer, &portalError))
                 {
                     session.zoneConnect = transfer;
                     zoneClient->close();
@@ -977,7 +998,12 @@ struct ClientApp
                         cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
                         cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
                         chatLines.push_back("[System] Transferred to " + zoneSnapshot.zoneName);
+                        appendPortalHints(chatLines, zoneSnapshot.zoneId);
                     }
+                }
+                else
+                {
+                    chatLines.push_back("[System] Portal failed: " + (portalError.empty() ? "unknown error" : portalError));
                 }
                 return;
             }
@@ -1081,6 +1107,31 @@ struct ClientApp
             cameraTileY);
     }
 
+    void renderZoneNameOverlay()
+    {
+        if (state != ClientState::InZone || zoneSnapshot.zoneName.empty())
+        {
+            return;
+        }
+
+        const char* label = zoneSnapshot.zoneName.c_str();
+        const ImVec2 textSize = ImGui::CalcTextSize(label);
+        constexpr float kMargin = 12.0f;
+        const ImVec2 pos(
+            static_cast<float>(width) - kMargin - textSize.x,
+            kMargin);
+
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        drawList->AddText(
+            ImVec2(pos.x + 1.0f, pos.y + 1.0f),
+            IM_COL32(0, 0, 0, 200),
+            label);
+        drawList->AddText(
+            pos,
+            IM_COL32(230, 230, 230, 240),
+            label);
+    }
+
     void renderLoginPanel()
     {
         constexpr float kPadding = 28.0f;
@@ -1166,7 +1217,6 @@ struct ClientApp
 
         if (hudWindow.begin(width, height))
         {
-            ImGui::Text("Zone: %s", zoneSnapshot.zoneName.c_str());
             ImGui::Text("Tile style: %s", zoneSnapshot.tileStyle.c_str());
             ImGui::Text("Position: (%d, %d)", zoneClient != nullptr ? zoneClient->playerTileX() : 0, zoneClient != nullptr ? zoneClient->playerTileY() : 0);
             ImGui::ProgressBar(
@@ -1348,6 +1398,8 @@ struct ClientApp
 #if TBEQ_ENABLE_DEBUG_MENU
         renderDebugMenu();
 #endif
+
+        renderZoneNameOverlay();
     }
 
     void frame()

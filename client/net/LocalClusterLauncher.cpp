@@ -18,6 +18,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <tlhelp32.h>
 #endif
 
 namespace tbeq::client
@@ -26,7 +27,6 @@ namespace tbeq::client
 namespace
 {
 
-constexpr const char* kZoneId = "starter_city";
 constexpr const char* kDbRelativePath = "config/tbeq.db";
 
 std::filesystem::path findRepoRoot()
@@ -175,6 +175,49 @@ bool spawnServerProcessWithConsole(
     CloseHandle(processInfo.hProcess);
     return true;
 }
+
+void terminateProcessId(unsigned long processId)
+{
+    if (processId == 0)
+    {
+        return;
+    }
+
+    HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, processId);
+    if (process != nullptr)
+    {
+        TerminateProcess(process, 0);
+        CloseHandle(process);
+    }
+}
+
+void terminateProcessesByName(const wchar_t* executableName)
+{
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+    {
+        return;
+    }
+
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snapshot, &entry))
+    {
+        do
+        {
+            if (_wcsicmp(entry.szExeFile, executableName) != 0)
+            {
+                continue;
+            }
+
+            spdlog::info("[cluster] stopping cluster server PID {}", entry.th32ProcessID);
+            terminateProcessId(entry.th32ProcessID);
+        }
+        while (Process32NextW(snapshot, &entry));
+    }
+
+    CloseHandle(snapshot);
+}
 #endif
 
 } // namespace
@@ -209,7 +252,20 @@ bool LocalClusterLauncher::isProcessRunning(unsigned long processId) const
 
 bool LocalClusterLauncher::isClusterReady() const
 {
-    return isTcpPortOpen(kWorldLoginClientPort) && isTcpPortOpen(kZoneClientPort);
+    if (!isTcpPortOpen(kWorldLoginClientPort))
+    {
+        return false;
+    }
+
+    for (const ZoneEndpoint& zone : kZoneEndpoints)
+    {
+        if (!isTcpPortOpen(zone.clientPort))
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool LocalClusterLauncher::waitForClusterReady(std::chrono::milliseconds timeout) const
@@ -288,7 +344,11 @@ bool LocalClusterLauncher::startWorldLogin(const std::filesystem::path& repoRoot
 #endif
 }
 
-bool LocalClusterLauncher::startZoneServer(const std::filesystem::path& repoRoot)
+bool LocalClusterLauncher::startZoneServer(
+    const std::filesystem::path& repoRoot,
+    const char* zoneId,
+    uint16_t clientPort,
+    StartedZoneServer& outStarted)
 {
 #ifdef _WIN32
     const std::filesystem::path zoneServerExe = resolveServerExecutable(repoRoot, "tbeq_zone_server");
@@ -303,54 +363,60 @@ bool LocalClusterLauncher::startZoneServer(const std::filesystem::path& repoRoot
     const std::filesystem::path dbPath = repoRoot / kDbRelativePath;
     const std::filesystem::path dataRoot = repoRoot / "data";
 
-    spdlog::info("[cluster] starting ZoneServer {} on client port {}", kZoneId, kZoneClientPort);
+    spdlog::info("[cluster] starting ZoneServer {} on client port {}", zoneId, clientPort);
 
     const std::vector<std::string> zoneServerArgs = {
         zoneServerExe.string(),
         "--dev-mode",
         "--zone-id",
-        kZoneId,
+        zoneId,
         "--world-login",
         "127.0.0.1",
         "--world-login-port",
         std::to_string(kWorldLoginPort),
         "--client-port",
-        std::to_string(kZoneClientPort),
+        std::to_string(clientPort),
         "--db-path",
         dbPath.string(),
         "--data-root",
         dataRoot.string(),
     };
 
-    if (!spawnServerProcessWithConsole(zoneServerArgs, repoRoot, zoneServerPid_))
+    unsigned long zonePid = 0;
+    if (!spawnServerProcessWithConsole(zoneServerArgs, repoRoot, zonePid))
     {
-        spdlog::error("[cluster] failed to start tbeq_zone_server");
+        spdlog::error("[cluster] failed to start tbeq_zone_server for zone {}", zoneId);
         return false;
     }
 
-    startedZoneServer_ = true;
+    outStarted.started = true;
+    outStarted.pid = zonePid;
 
-    if (!waitForTcpPort(kZoneClientPort, kZoneReadyTimeout))
+    if (!waitForTcpPort(clientPort, kZoneReadyTimeout))
     {
-        if (!isProcessRunning(zoneServerPid_))
+        if (!isProcessRunning(zonePid))
         {
-            spdlog::error("[cluster] tbeq_zone_server exited before becoming ready");
+            spdlog::error("[cluster] tbeq_zone_server for zone {} exited before becoming ready", zoneId);
         }
         else
         {
             spdlog::error(
-                "[cluster] ZoneServer client port {} did not become ready within {} ms",
-                kZoneClientPort,
+                "[cluster] ZoneServer {} client port {} did not become ready within {} ms",
+                zoneId,
+                clientPort,
                 kZoneReadyTimeout.count());
         }
         return false;
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    spdlog::info("[cluster] ZoneServer ready on client port {}", kZoneClientPort);
+    spdlog::info("[cluster] ZoneServer {} ready on client port {}", zoneId, clientPort);
     return true;
 #else
     (void)repoRoot;
+    (void)zoneId;
+    (void)clientPort;
+    (void)outStarted;
     return false;
 #endif
 }
@@ -360,9 +426,11 @@ bool LocalClusterLauncher::ensureRunning()
     if (isClusterReady())
     {
         spdlog::info(
-            "[cluster] local cluster already running (world-login client {}, zone {})",
+            "[cluster] local cluster already running (world-login client {}, zones {}, {}, {})",
             kWorldLoginClientPort,
-            kZoneClientPort);
+            kStarterCityPort,
+            kStarterHuntingPort,
+            kStarterDungeonPort);
         return true;
     }
 
@@ -371,6 +439,7 @@ bool LocalClusterLauncher::ensureRunning()
     return false;
 #else
     spdlog::info("[cluster] local cluster not ready; starting missing server processes");
+
     const std::filesystem::path repoRoot = findRepoRoot();
     spdlog::info("[cluster] repo root resolved to {}", repoRoot.string());
 
@@ -386,63 +455,77 @@ bool LocalClusterLauncher::ensureRunning()
         spdlog::info("[cluster] WorldLogin already listening on client port {}", kWorldLoginClientPort);
     }
 
-    if (!isTcpPortOpen(kZoneClientPort))
+    for (std::size_t i = 0; i < kZoneEndpoints.size(); ++i)
     {
-        if (!startZoneServer(repoRoot))
+        const ZoneEndpoint& zone = kZoneEndpoints[i];
+        if (isTcpPortOpen(zone.clientPort))
+        {
+            spdlog::info(
+                "[cluster] ZoneServer {} already listening on client port {}",
+                zone.zoneId,
+                zone.clientPort);
+            continue;
+        }
+
+        if (!startZoneServer(repoRoot, zone.zoneId, zone.clientPort, startedZoneServers_[i]))
         {
             return false;
         }
     }
-    else
-    {
-        spdlog::info("[cluster] ZoneServer already listening on client port {}", kZoneClientPort);
-    }
 
-    if (!waitForClusterReady(std::chrono::seconds(2)))
+    if (!waitForClusterReady(std::chrono::seconds(5)))
     {
         spdlog::error("[cluster] cluster ports did not become ready after startup");
         return false;
     }
 
     spdlog::info(
-        "[cluster] local cluster ready (world-login client {}, zone {})",
+        "[cluster] local cluster ready (world-login client {}, zones {}, {}, {})",
         kWorldLoginClientPort,
-        kZoneClientPort);
+        kStarterCityPort,
+        kStarterHuntingPort,
+        kStarterDungeonPort);
     return true;
 #endif
 }
 
-void LocalClusterLauncher::shutdownIfStarted()
+void LocalClusterLauncher::terminateTrackedProcesses()
 {
 #ifdef _WIN32
-    auto terminatePid = [](unsigned long processId)
+    for (auto it = startedZoneServers_.rbegin(); it != startedZoneServers_.rend(); ++it)
     {
-        if (processId == 0)
+        if (it->started)
         {
-            return;
+            terminateProcessId(it->pid);
+            it->pid = 0;
+            it->started = false;
         }
-
-        HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, processId);
-        if (process != nullptr)
-        {
-            TerminateProcess(process, 0);
-            CloseHandle(process);
-        }
-    };
-
-    if (startedZoneServer_)
-    {
-        terminatePid(zoneServerPid_);
-        zoneServerPid_ = 0;
-        startedZoneServer_ = false;
     }
 
     if (startedWorldLogin_)
     {
-        terminatePid(worldLoginPid_);
+        terminateProcessId(worldLoginPid_);
         worldLoginPid_ = 0;
         startedWorldLogin_ = false;
     }
+#endif
+}
+
+void LocalClusterLauncher::terminateClusterServerProcesses()
+{
+#ifdef _WIN32
+    terminateProcessesByName(L"tbeq_zone_server.exe");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    terminateProcessesByName(L"tbeq_world_login.exe");
+#endif
+}
+
+void LocalClusterLauncher::shutdownCluster()
+{
+#ifdef _WIN32
+    spdlog::info("[cluster] shutting down local WorldLogin and zone servers");
+    terminateTrackedProcesses();
+    terminateClusterServerProcesses();
 #endif
 }
 

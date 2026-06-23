@@ -135,7 +135,12 @@ private:
     net::ZoneSnapshotPayload buildZoneSnapshot(bool includeTiles = false) const;
     net::ZoneTileGridPayload buildZoneTileGrid() const;
 
-    void flushPlayerLocation(PlayerEntity& player);
+    void persistPlayerToDatabase(const PlayerEntity& player);
+    std::string evictPlayerForConnection(const std::shared_ptr<TcpConnection>& connection);
+    void finalizePlayerEviction(const std::string& characterId);
+    void handleClientDisconnect(const std::shared_ptr<TcpConnection>& connection);
+    void sendPlayerDisconnectToWorld(const std::string& characterId);
+    void sendZoneTransferCompleteToWorld(const PlayerEntity& player);
 
     PlayerEntity* findPlayerByConnection(const std::shared_ptr<TcpConnection>& connection);
     PlayerEntity* findPlayerByCharacterId(const std::string& characterId);
@@ -155,6 +160,7 @@ private:
     void handleDebugCommand(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleChatMessage(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleUsePortal(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleSessionEnd(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
 
     void deliverSayChat(const PlayerEntity& sender, const std::string& text);
     void deliverSystemMessage(const PlayerEntity& player, const std::string& text);

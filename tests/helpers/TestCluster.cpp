@@ -267,4 +267,21 @@ bool TestCluster::startZoneServer(const std::string& zoneId, uint16_t clientPort
     return waitForTcpPort(clientPort, std::chrono::seconds(8));
 }
 
+bool TestCluster::startDefaultZoneCluster(DefaultZoneCluster& outCluster) const
+{
+    outCluster.cityPort = pickEphemeralPort();
+    outCluster.huntingPort = pickEphemeralPort();
+    outCluster.dungeonPort = pickEphemeralPort();
+
+    if (!startZoneServer("starter_city", outCluster.cityPort, outCluster.cityProcess))
+    {
+        return false;
+    }
+    if (!startZoneServer("starter_hunting", outCluster.huntingPort, outCluster.huntingProcess))
+    {
+        return false;
+    }
+    return startZoneServer("starter_dungeon", outCluster.dungeonPort, outCluster.dungeonProcess);
+}
+
 } // namespace tbeq::test

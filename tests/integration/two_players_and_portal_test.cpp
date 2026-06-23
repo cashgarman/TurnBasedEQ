@@ -7,6 +7,7 @@
 #include "HeadlessClient.hpp"
 #include "TestCluster.hpp"
 #include "tbeq/net/ClientPackets.hpp"
+#include "tbeq/net/DebugCommands.hpp"
 
 namespace
 {
@@ -257,7 +258,6 @@ bool sessionResumeAndReadSnapshot(
 
         if (resumeOk && gotSnapshot)
         {
-            drainClientPackets(client, kPollInterval);
             return true;
         }
     }
@@ -476,4 +476,364 @@ TEST_CASE("zone portal transfer reaches destination zone", "[integration][moveme
     tbeq::net::ZoneSnapshotPayload huntingSnapshot;
     REQUIRE(sessionResumeAndReadSnapshot(client, login, huntingSnapshot));
     REQUIRE(huntingSnapshot.zoneId == "starter_hunting");
+}
+
+bool walkToTile(
+    tbeq::test::HeadlessClient& client,
+    uint64_t sessionTokenHash,
+    int32_t& currentX,
+    int32_t& currentY,
+    int32_t targetX,
+    int32_t targetY,
+    uint32_t sequenceBase)
+{
+    for (int step = 0; step < 256 && (currentX != targetX || currentY != targetY); ++step)
+    {
+        tbeq::net::MoveIntentPayload move;
+        move.targetTileX = currentX;
+        move.targetTileY = currentY;
+
+        if (currentY != targetY)
+        {
+            if (currentY < targetY)
+            {
+                ++move.targetTileY;
+            }
+            else
+            {
+                --move.targetTileY;
+            }
+        }
+        else if (currentX != targetX)
+        {
+            if (currentX < targetX)
+            {
+                ++move.targetTileX;
+            }
+            else
+            {
+                --move.targetTileX;
+            }
+        }
+
+        client.sendClientPacket(
+            tbeq::net::ClientPacketType::MoveIntent,
+            sequenceBase + static_cast<uint32_t>(step),
+            tbeq::net::serialize(move),
+            sessionTokenHash);
+
+        tbeq::net::MoveResultPayload moveResult;
+        if (!readMoveResult(client, moveResult) || !moveResult.ok)
+        {
+            return false;
+        }
+        currentX = moveResult.tileX;
+        currentY = moveResult.tileY;
+    }
+
+    return currentX == targetX && currentY == targetY;
+}
+
+bool usePortalTransfer(
+    tbeq::test::HeadlessClient& client,
+    LoginHandoffResult& login,
+    const std::string& expectedZoneId,
+    uint16_t expectedPort,
+    tbeq::net::ZoneSnapshotPayload& outSnapshot,
+    int32_t* tileX = nullptr,
+    int32_t* tileY = nullptr)
+{
+    client.sendClientPacket(
+        tbeq::net::ClientPacketType::UsePortal,
+        500,
+        tbeq::net::serialize(tbeq::net::UsePortalPayload{}),
+        login.sessionTokenHash);
+
+    const auto transferPacket = readClientPacketOfType(
+        client,
+        tbeq::net::ClientPacketType::ZoneConnectInfo,
+        std::chrono::seconds(15));
+    if (!transferPacket.has_value())
+    {
+        return false;
+    }
+
+    tbeq::net::ZoneConnectInfoPayload transferConnect;
+    if (!tbeq::net::deserializeClientPacket(*transferPacket, transferConnect)
+        || !transferConnect.ok
+        || transferConnect.zoneId != expectedZoneId
+        || transferConnect.zonePort != expectedPort)
+    {
+        return false;
+    }
+
+    login.zoneConnect = transferConnect;
+    return sessionResumeAndReadSnapshot(client, login, outSnapshot, tileX, tileY);
+}
+
+std::optional<tbeq::net::InventorySnapshotPayload> readInventorySnapshot(
+    tbeq::test::HeadlessClient& client,
+    std::chrono::milliseconds timeout = std::chrono::seconds(3))
+{
+    const auto packet = readClientPacketOfType(
+        client,
+        tbeq::net::ClientPacketType::InventorySnapshot,
+        timeout);
+    if (!packet.has_value())
+    {
+        return std::nullopt;
+    }
+
+    tbeq::net::InventorySnapshotPayload inventory;
+    if (!tbeq::net::deserializeClientPacket(*packet, inventory))
+    {
+        return std::nullopt;
+    }
+    return inventory;
+}
+
+bool inventoryContainsItem(const tbeq::net::InventorySnapshotPayload& inventory, const std::string& itemId)
+{
+    for (const auto& stack : inventory.items)
+    {
+        if (stack.itemId == itemId && stack.quantity > 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<LoginHandoffResult> loginExistingCharacter(
+    tbeq::test::HeadlessClient& client,
+    const std::string& username,
+    const std::string& password,
+    const std::string& characterId)
+{
+    LoginHandoffResult result;
+
+    tbeq::net::LoginRequestPayload login;
+    login.username = username;
+    login.password = password;
+    client.sendClientPacket(tbeq::net::ClientPacketType::LoginRequest, 2, tbeq::net::serialize(login));
+
+    const auto loginResponsePacket = pollClientPacket(client, kHandoffStepTimeout);
+    if (!loginResponsePacket.has_value())
+    {
+        return std::nullopt;
+    }
+
+    tbeq::net::LoginResponsePayload loginResponse;
+    if (!tbeq::net::deserializeClientPacket(*loginResponsePacket, loginResponse) || !loginResponse.ok)
+    {
+        return std::nullopt;
+    }
+    result.sessionTokenHash = loginResponse.sessionTokenHash;
+    result.characterId = characterId;
+
+    tbeq::net::SelectCharacterRequestPayload selectCharacter;
+    selectCharacter.characterId = characterId;
+    client.sendClientPacket(
+        tbeq::net::ClientPacketType::SelectCharacterRequest,
+        4,
+        tbeq::net::serialize(selectCharacter),
+        loginResponse.sessionTokenHash);
+
+    const auto zoneConnectPacket = pollClientPacket(client, kZoneConnectTimeout);
+    if (!zoneConnectPacket.has_value())
+    {
+        return std::nullopt;
+    }
+
+    if (!tbeq::net::deserializeClientPacket(*zoneConnectPacket, result.zoneConnect) || !result.zoneConnect.ok)
+    {
+        return std::nullopt;
+    }
+
+    return result;
+}
+
+TEST_CASE("three zone portal round trip", "[integration][movement]")
+{
+    if (!serverExecutablesExist())
+    {
+        SKIP("Server executables not built yet");
+    }
+
+    tbeq::test::TestCluster cluster;
+    REQUIRE(cluster.waitForWorldLoginReady(std::chrono::seconds(8)));
+    REQUIRE(cluster.waitForWorldLoginClientReady(std::chrono::seconds(8)));
+
+    tbeq::test::TestCluster::DefaultZoneCluster zones;
+    REQUIRE(cluster.startDefaultZoneCluster(zones));
+
+    asio::io_context io;
+    tbeq::test::HeadlessClient client(io);
+    client.connect("127.0.0.1", cluster.worldLoginClientPort());
+    const auto loginOpt = loginCreateAndHandoff(client, "roundtrip_user", "roundtrip_pass", "RoundTripHero");
+    REQUIRE(loginOpt.has_value());
+    auto login = *loginOpt;
+    REQUIRE(login.zoneConnect.zonePort == zones.cityPort);
+
+    tbeq::net::ZoneSnapshotPayload snapshot;
+    int32_t currentX = 0;
+    int32_t currentY = 0;
+    REQUIRE(sessionResumeAndReadSnapshot(client, login, snapshot, &currentX, &currentY));
+    REQUIRE(snapshot.zoneId == "starter_city");
+
+    REQUIRE(walkToTile(client, login.sessionTokenHash, currentX, currentY, 32, 8, 100));
+    REQUIRE(usePortalTransfer(client, login, "starter_hunting", zones.huntingPort, snapshot, &currentX, &currentY));
+    REQUIRE(snapshot.zoneId == "starter_hunting");
+
+    REQUIRE(walkToTile(client, login.sessionTokenHash, currentX, currentY, 120, 64, 200));
+    REQUIRE(usePortalTransfer(client, login, "starter_dungeon", zones.dungeonPort, snapshot, &currentX, &currentY));
+    REQUIRE(snapshot.zoneId == "starter_dungeon");
+
+    REQUIRE(walkToTile(client, login.sessionTokenHash, currentX, currentY, 4, 24, 300));
+    REQUIRE(usePortalTransfer(client, login, "starter_hunting", zones.huntingPort, snapshot, &currentX, &currentY));
+    REQUIRE(snapshot.zoneId == "starter_hunting");
+
+    REQUIRE(walkToTile(client, login.sessionTokenHash, currentX, currentY, 64, 8, 400));
+    REQUIRE(usePortalTransfer(client, login, "starter_city", zones.cityPort, snapshot, &currentX, &currentY));
+    REQUIRE(snapshot.zoneId == "starter_city");
+}
+
+TEST_CASE("player state persists after disconnect and relogin", "[integration][movement]")
+{
+    if (!serverExecutablesExist())
+    {
+        SKIP("Server executables not built yet");
+    }
+
+    tbeq::test::TestCluster cluster;
+    REQUIRE(cluster.waitForWorldLoginReady(std::chrono::seconds(8)));
+    REQUIRE(cluster.waitForWorldLoginClientReady(std::chrono::seconds(8)));
+
+    tbeq::test::ProcessHandle cityProcess;
+    const uint16_t cityPort = tbeq::test::TestCluster::pickEphemeralPort();
+    REQUIRE(cluster.startZoneServer("starter_city", cityPort, cityProcess));
+
+    asio::io_context io;
+    tbeq::test::HeadlessClient client(io);
+    client.connect("127.0.0.1", cluster.worldLoginClientPort());
+    const auto loginOpt = loginCreateAndHandoff(client, "persist_user", "persist_pass", "PersistHero");
+    REQUIRE(loginOpt.has_value());
+    const auto login = *loginOpt;
+
+    tbeq::net::ZoneSnapshotPayload snapshot;
+    int32_t savedX = 0;
+    int32_t savedY = 0;
+    REQUIRE(sessionResumeAndReadSnapshot(client, login, snapshot, &savedX, &savedY));
+
+    constexpr int32_t kTargetX = 34;
+    constexpr int32_t kTargetY = 33;
+    REQUIRE(walkToTile(client, login.sessionTokenHash, savedX, savedY, kTargetX, kTargetY, 100));
+    client.close();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    tbeq::test::HeadlessClient relogClient(io);
+    relogClient.connect("127.0.0.1", cluster.worldLoginClientPort());
+    const auto reloginOpt = loginExistingCharacter(
+        relogClient,
+        "persist_user",
+        "persist_pass",
+        login.characterId);
+    REQUIRE(reloginOpt.has_value());
+    const auto relogin = *reloginOpt;
+    REQUIRE(relogin.zoneConnect.zonePort == cityPort);
+
+    int32_t restoredX = 0;
+    int32_t restoredY = 0;
+    tbeq::net::ZoneSnapshotPayload restoredSnapshot;
+    REQUIRE(sessionResumeAndReadSnapshot(relogClient, relogin, restoredSnapshot, &restoredX, &restoredY));
+    REQUIRE(restoredX == kTargetX);
+    REQUIRE(restoredY == kTargetY);
+}
+
+TEST_CASE("inventory persists across zone transfer", "[integration][movement]")
+{
+    if (!serverExecutablesExist())
+    {
+        SKIP("Server executables not built yet");
+    }
+
+    tbeq::test::TestCluster cluster;
+    REQUIRE(cluster.waitForWorldLoginReady(std::chrono::seconds(8)));
+    REQUIRE(cluster.waitForWorldLoginClientReady(std::chrono::seconds(8)));
+
+    tbeq::test::ProcessHandle cityProcess;
+    tbeq::test::ProcessHandle huntingProcess;
+    const uint16_t cityPort = tbeq::test::TestCluster::pickEphemeralPort();
+    const uint16_t huntingPort = tbeq::test::TestCluster::pickEphemeralPort();
+    REQUIRE(cluster.startZoneServer("starter_city", cityPort, cityProcess));
+    REQUIRE(cluster.startZoneServer("starter_hunting", huntingPort, huntingProcess));
+
+    asio::io_context io;
+    tbeq::test::HeadlessClient client(io);
+    client.connect("127.0.0.1", cluster.worldLoginClientPort());
+    const auto loginOpt = loginCreateAndHandoff(client, "xfer_item_user", "xfer_item_pass", "XferItemHero");
+    REQUIRE(loginOpt.has_value());
+    auto login = *loginOpt;
+
+    tbeq::net::ZoneSnapshotPayload snapshot;
+    int32_t currentX = 0;
+    int32_t currentY = 0;
+    REQUIRE(sessionResumeAndReadSnapshot(client, login, snapshot, &currentX, &currentY));
+
+    tbeq::net::DebugCommandRequestPayload grantItem;
+    grantItem.command = tbeq::net::DebugCommand::GrantItem;
+    grantItem.args = {"rusty_dagger", "1"};
+    client.sendClientPacket(
+        tbeq::net::ClientPacketType::DebugCommandRequest,
+        50,
+        tbeq::net::serialize(grantItem),
+        login.sessionTokenHash);
+
+    bool grantOk = false;
+    std::optional<tbeq::net::InventorySnapshotPayload> cityInventory;
+    const auto grantDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < grantDeadline && (!grantOk || !cityInventory.has_value()))
+    {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            grantDeadline - std::chrono::steady_clock::now());
+        if (remaining <= std::chrono::milliseconds(0))
+        {
+            break;
+        }
+
+        const auto packet = pollClientPacket(client, remaining);
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        const auto type = static_cast<tbeq::net::ClientPacketType>(packet->header.packetType);
+        if (type == tbeq::net::ClientPacketType::DebugCommandResponse)
+        {
+            tbeq::net::DebugCommandResponsePayload grantResponse;
+            if (tbeq::net::deserializeClientPacket(*packet, grantResponse))
+            {
+                grantOk = grantResponse.ok;
+            }
+        }
+        else if (type == tbeq::net::ClientPacketType::InventorySnapshot)
+        {
+            tbeq::net::InventorySnapshotPayload inventory;
+            if (tbeq::net::deserializeClientPacket(*packet, inventory))
+            {
+                cityInventory = std::move(inventory);
+            }
+        }
+    }
+    REQUIRE(grantOk);
+    REQUIRE(cityInventory.has_value());
+    REQUIRE(inventoryContainsItem(*cityInventory, "rusty_dagger"));
+
+    REQUIRE(walkToTile(client, login.sessionTokenHash, currentX, currentY, 32, 8, 100));
+    REQUIRE(usePortalTransfer(client, login, "starter_hunting", huntingPort, snapshot, &currentX, &currentY));
+    REQUIRE(snapshot.zoneId == "starter_hunting");
+
+    const auto huntingInventory = readInventorySnapshot(client);
+    REQUIRE(huntingInventory.has_value());
+    REQUIRE(inventoryContainsItem(*huntingInventory, "rusty_dagger"));
 }

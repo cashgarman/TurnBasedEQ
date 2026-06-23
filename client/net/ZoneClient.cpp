@@ -41,8 +41,27 @@ bool ZoneClient::connect(const std::string& host, uint16_t port)
 
 void ZoneClient::close()
 {
+    if (!socket_.is_open())
+    {
+        return;
+    }
+
     std::error_code ec;
+    socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
     socket_.close(ec);
+}
+
+void ZoneClient::disconnectGracefully()
+{
+    if (!socket_.is_open())
+    {
+        return;
+    }
+
+    spdlog::info("[client] saving session before disconnect");
+    sendPacket(net::ClientPacketType::SessionEnd, net::serialize(net::SessionEndPayload{}), sessionTokenHash_);
+    close();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }
 
 bool ZoneClient::isConnected() const
@@ -418,10 +437,19 @@ bool ZoneClient::moveTo(int32_t tileX, int32_t tileY, net::MoveResultPayload& ou
     return false;
 }
 
-bool ZoneClient::usePortal(net::ZoneConnectInfoPayload& outConnectInfo)
+bool ZoneClient::usePortal(net::ZoneConnectInfoPayload& outConnectInfo, std::string* outErrorMessage)
 {
+    auto setError = [&](const std::string& message)
+    {
+        if (outErrorMessage != nullptr)
+        {
+            *outErrorMessage = message;
+        }
+    };
+
     if (!sendPacket(net::ClientPacketType::UsePortal, net::serialize(net::UsePortalPayload{}), sessionTokenHash_))
     {
+        setError("Failed to send portal request");
         return false;
     }
 
@@ -447,15 +475,27 @@ bool ZoneClient::usePortal(net::ZoneConnectInfoPayload& outConnectInfo)
             net::UsePortalResultPayload result;
             if (!net::deserializeClientPacket(*packet, result) || !result.ok)
             {
+                setError(result.message.empty() ? "Portal failed" : result.message);
                 return false;
             }
         }
         else if (type == net::ClientPacketType::ZoneConnectInfo)
         {
-            return net::deserializeClientPacket(*packet, outConnectInfo) && outConnectInfo.ok;
+            if (!net::deserializeClientPacket(*packet, outConnectInfo))
+            {
+                setError("Invalid zone connect response");
+                return false;
+            }
+            if (!outConnectInfo.ok)
+            {
+                setError(outConnectInfo.message.empty() ? "Zone transfer failed" : outConnectInfo.message);
+                return false;
+            }
+            return true;
         }
     }
 
+    setError("Portal timed out waiting for destination zone");
     return false;
 }
 

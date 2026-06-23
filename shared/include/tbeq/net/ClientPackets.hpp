@@ -387,6 +387,10 @@ struct NpcDialogOpenPayload
     std::vector<std::string> lines;
 };
 
+struct SessionEndPayload
+{
+};
+
 struct ZoneRegisterPayload
 {
     std::string zoneId;

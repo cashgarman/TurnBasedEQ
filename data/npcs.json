@@ -48,7 +48,7 @@
       "A skilled trader pays less and earns more when selling loot."
     ]
   },
-  {
+    {
     "id": "starter_city_lorekeeper_3",
     "name": "Sage Tilla",
     "aliases": ["lorekeeper_starter_3"],
@@ -56,6 +56,15 @@
     "loreLines": [
       "Steel alone does not win battles in these lands.",
       "Press L to inspect your gear — armor tints your sprite head, chest, and hands."
+    ]
+  },
+  {
+    "id": "starter_hunting_guide",
+    "name": "Ranger Elia",
+    "roles": ["lorekeeper"],
+    "loreLines": [
+      "Forest camps dot the trails east and south of the crossroads.",
+      "Walk near a camp to draw aggro, or press P on a portal pad to travel."
     ]
   }
 ]

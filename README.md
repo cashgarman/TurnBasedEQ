@@ -56,13 +56,30 @@ Includes unit tests, integration tests, and CTest target `content_validation`.
 - **Lorekeepers** — blue-outlined NPCs share lore lines via system chat on interact
 - **Debug menu** — hidden by default in Debug builds; bottom-right `F1: Debug Menu` hint
 
+### Phase 5.5 — Multi-zone cluster, navigation, persistence
+
+- **Multi-zone dev cluster** — `run_cluster.ps1` starts WorldLogin plus all three generated zones (separate console window per process)
+- **Portal navigation** — walk to a portal pad and press `P` to travel between Starter City, Hunting Grounds, and Goblin Cave
+- **State handoff** — full character state (`state_json`, zone, tile) saved to shared SQLite on disconnect and before zone transfer; restored on login via WorldLogin broker + `LoadCharacter`
+- **Per-zone logging** — `logs/zone_starter_city.log`, `logs/zone_starter_hunting.log`, etc.
+
 ## Run local server cluster
 
 ```powershell
 .\scripts\run_cluster.ps1 -BuildConfig Debug
 ```
 
-Starts `tbeq_world_login` and `tbeq_zone_server` with `--dev-mode`. Press Enter to stop both processes.
+Starts **four processes** (WorldLogin + three zone servers) with `--dev-mode`. Each zone runs in its own console window for debug logs. Press Enter to stop all processes.
+
+| Zone | Client port | Portals |
+|------|-------------|---------|
+| `starter_city` | 9100 | North (32,8) → Hunting Grounds |
+| `starter_hunting` | 9101 | South (64,8) → City; East (120,64) → Goblin Cave |
+| `starter_dungeon` | 9102 | West (4,24) → Hunting Grounds |
+
+Optional: `-Zones starter_city` to run a single zone for isolated debugging.
+
+All processes share `config/tbeq.db`. Closing the client saves your location and inventory; logging in again restores them.
 
 ## Run client
 
@@ -79,6 +96,7 @@ From the repo root (so `config/ui_layout.json` resolves correctly):
 - **F1** toggles the debug menu (Debug builds, hidden by default) with a live spdlog log viewer
 - **Phase 3.5** — procedural entity sprites on the tilemap (players, other clients, zone NPCs)
 - **Phase 5** — `I` inventory, `L` look/inspect, `N` NPC interact, merchant and lorekeeper NPCs
+- **Phase 5.5** — `P` portal on portal tiles; zone-aware portal hints in system chat
 
 ## Project layout
 
@@ -91,7 +109,7 @@ From the repo root (so `config/ui_layout.json` resolves correctly):
 | `tools/data_validator/` | JSON content validation (CTest) |
 | `tests/` | Catch2 unit + integration tests |
 | `data/` | Seed JSON content |
-| `scripts/run_cluster.ps1` | Local dev cluster launcher |
+| `scripts/run_cluster.ps1` | Local dev cluster launcher (multi-zone) |
 
 ## Dev flags
 

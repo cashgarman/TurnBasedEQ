@@ -156,3 +156,65 @@ TEST_CASE("EntityStatePayload legacy payload deserializes with defaults", "[net]
     REQUIRE(parsed.classId.empty());
     REQUIRE(parsed.appearanceId.empty());
 }
+
+TEST_CASE("PlayerDisconnect server packet round-trip", "[net]")
+{
+    tbeq::net::PlayerDisconnectPayload original;
+    original.characterId = "char_123";
+
+    const auto writer = tbeq::net::serialize(original);
+    const auto packet = tbeq::net::serializeServerPacket(
+        tbeq::net::ServerPacketType::PlayerDisconnect,
+        11,
+        writer);
+    const auto encoded = tbeq::net::encodePacket(packet);
+
+    tbeq::net::SerializedPacket decoded;
+    REQUIRE(tbeq::net::decodePacket(encoded, decoded));
+
+    tbeq::net::PlayerDisconnectPayload parsed;
+    REQUIRE(tbeq::net::deserializeServerPacket(decoded, parsed));
+    REQUIRE(parsed.characterId == original.characterId);
+}
+
+TEST_CASE("SessionEnd client packet round-trip", "[net]")
+{
+    const auto writer = tbeq::net::serialize(tbeq::net::SessionEndPayload{});
+    const auto packet = tbeq::net::serializeClientPacket(
+        tbeq::net::ClientPacketType::SessionEnd,
+        12,
+        writer);
+    const auto encoded = tbeq::net::encodePacket(packet);
+
+    tbeq::net::SerializedPacket decoded;
+    REQUIRE(tbeq::net::decodePacket(encoded, decoded));
+
+    tbeq::net::SessionEndPayload parsed;
+    REQUIRE(tbeq::net::deserializeClientPacket(decoded, parsed));
+}
+
+TEST_CASE("ZoneTransferComplete server packet round-trip", "[net]")
+{
+    tbeq::net::ZoneTransferCompletePayload original;
+    original.characterId = "char_456";
+    original.zoneId = "starter_hunting";
+    original.posX = 64.0f;
+    original.posY = 8.0f;
+
+    const auto writer = tbeq::net::serialize(original);
+    const auto packet = tbeq::net::serializeServerPacket(
+        tbeq::net::ServerPacketType::ZoneTransferComplete,
+        12,
+        writer);
+    const auto encoded = tbeq::net::encodePacket(packet);
+
+    tbeq::net::SerializedPacket decoded;
+    REQUIRE(tbeq::net::decodePacket(encoded, decoded));
+
+    tbeq::net::ZoneTransferCompletePayload parsed;
+    REQUIRE(tbeq::net::deserializeServerPacket(decoded, parsed));
+    REQUIRE(parsed.characterId == original.characterId);
+    REQUIRE(parsed.zoneId == original.zoneId);
+    REQUIRE(parsed.posX == original.posX);
+    REQUIRE(parsed.posY == original.posY);
+}

@@ -51,6 +51,18 @@ public:
     bool waitForTcpPort(uint16_t port, std::chrono::milliseconds timeout) const;
     bool startZoneServer(const std::string& zoneId, uint16_t clientPort, ProcessHandle& outProcess) const;
 
+    struct DefaultZoneCluster
+    {
+        ProcessHandle cityProcess;
+        ProcessHandle huntingProcess;
+        ProcessHandle dungeonProcess;
+        uint16_t cityPort = 0;
+        uint16_t huntingPort = 0;
+        uint16_t dungeonPort = 0;
+    };
+
+    bool startDefaultZoneCluster(DefaultZoneCluster& outCluster) const;
+
     static uint16_t pickEphemeralPort();
     static ProcessHandle spawnProcess(const std::vector<std::string>& args, const std::filesystem::path& workingDir);
 

@@ -257,6 +257,9 @@ GeneratedZone WorldGenerator::buildHuntingZone() const
     zone.spawns.push_back(GeneratedZone::Spawn{"camp_beta", 88, 96, "forest_tier1", 90});
     zone.spawns.push_back(GeneratedZone::Spawn{"camp_gamma", 96, 40, "forest_tier2", 120});
     zone.spawns.push_back(GeneratedZone::Spawn{"camp_delta", 48, 104, "forest_tier2", 120});
+    zone.spawns.push_back(GeneratedZone::Spawn{"trail_scouts", 78, 56, "forest_tier1", 90});
+
+    zone.npcSlots.push_back(GeneratedZone::NpcSlot{"lore", 66, 64, "starter_hunting_guide"});
 
     return zone;
 }

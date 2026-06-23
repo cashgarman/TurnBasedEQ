@@ -12,6 +12,7 @@
 #include "tbeq/net/PacketSerializer.hpp"
 #include "tbeq/net/ServerPackets.hpp"
 #include "tbeq/social/ChatChannel.hpp"
+#include "tbeq/worldgen/WorldBootstrap.hpp"
 
 namespace tbeq::server
 {
@@ -29,16 +30,32 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
     , config_(config)
     , debugHandler_(config.devMode)
     , database_(config.dbPath)
-    , clientAcceptor_(io, config.zoneClientPort, [this](std::shared_ptr<TcpConnection> connection,
-                                                        const net::SerializedPacket& packet)
-    {
-        handleClientPacket(std::move(connection), packet);
-    })
+    , clientAcceptor_(io, config.zoneClientPort,
+        [this](std::shared_ptr<TcpConnection> connection, const net::SerializedPacket& packet)
+        {
+            handleClientPacket(std::move(connection), packet);
+        },
+        [this](const std::shared_ptr<TcpConnection>& connection)
+        {
+            connection->setCloseHandler(
+                [this](const std::shared_ptr<TcpConnection>& closedConnection)
+                {
+                    handleClientDisconnect(closedConnection);
+                });
+        })
 {
     clientPort_ = clientAcceptor_.port();
     if (!database_.open())
     {
         throw std::runtime_error("Failed to open zone database");
+    }
+
+    if (!worldgen::ensureWorldInDatabase(
+            database_,
+            config_.worldSeed,
+            std::filesystem::path(config_.dataRoot)))
+    {
+        throw std::runtime_error("Failed to ensure world data in database");
     }
 
     const auto tileDefsPath = std::filesystem::path(config.dataRoot) / "tile_defs.json";
@@ -312,19 +329,109 @@ net::ZoneTileGridPayload ZoneServer::buildZoneTileGrid() const
     return grid;
 }
 
-void ZoneServer::flushPlayerLocation(PlayerEntity& player)
+void ZoneServer::persistPlayerToDatabase(const PlayerEntity& player)
 {
-    if (!player.locationDirty)
-    {
-        return;
-    }
-
+    database_.updateCharacterState(player.characterId, player.characterState.toJson());
     database_.updateCharacterLocation(
         player.characterId,
         config_.zoneId,
         static_cast<float>(player.tileX),
         static_cast<float>(player.tileY));
-    player.locationDirty = false;
+}
+
+std::string ZoneServer::evictPlayerForConnection(const std::shared_ptr<TcpConnection>& connection)
+{
+    std::string characterId;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        for (auto it = players_.begin(); it != players_.end(); ++it)
+        {
+            if (it->second.connection == connection)
+            {
+                characterId = it->first;
+                persistPlayerToDatabase(it->second);
+                players_.erase(it);
+                break;
+            }
+        }
+    }
+    return characterId;
+}
+
+void ZoneServer::finalizePlayerEviction(const std::string& characterId)
+{
+    if (characterId.empty())
+    {
+        return;
+    }
+
+    spdlog::info("Client disconnected character={} zone={}", characterId, config_.zoneId);
+    sendPlayerDisconnectToWorld(characterId);
+    broadcastEntitySnapshot();
+}
+
+void ZoneServer::sendPlayerDisconnectToWorld(const std::string& characterId)
+{
+    if (!worldLink_)
+    {
+        return;
+    }
+
+    net::PlayerDisconnectPayload payload;
+    payload.characterId = characterId;
+    sendServerPacketToWorld(
+        worldLink_,
+        net::ServerPacketType::PlayerDisconnect,
+        0,
+        net::serialize(payload));
+}
+
+void ZoneServer::handleClientDisconnect(const std::shared_ptr<TcpConnection>& connection)
+{
+    finalizePlayerEviction(evictPlayerForConnection(connection));
+}
+
+void ZoneServer::handleSessionEnd(
+    const std::shared_ptr<TcpConnection>& connection,
+    const net::SerializedPacket& packet)
+{
+    net::SessionEndPayload request;
+    if (!net::deserializeClientPacket(packet, request))
+    {
+        return;
+    }
+
+    finalizePlayerEviction(evictPlayerForConnection(connection));
+}
+
+void ZoneServer::sendZoneTransferCompleteToWorld(const PlayerEntity& player)
+{
+    if (!worldLink_)
+    {
+        return;
+    }
+
+    net::ZoneTransferCompletePayload payload;
+    payload.characterId = player.characterId;
+    payload.zoneId = config_.zoneId;
+    payload.posX = static_cast<float>(player.tileX);
+    payload.posY = static_cast<float>(player.tileY);
+    sendServerPacketToWorld(
+        worldLink_,
+        net::ServerPacketType::ZoneTransferComplete,
+        0,
+        net::serialize(payload));
+}
+
+void ZoneServer::removePlayer(const std::string& characterId)
+{
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    const auto it = players_.find(characterId);
+    if (it != players_.end())
+    {
+        persistPlayerToDatabase(it->second);
+        players_.erase(it);
+    }
 }
 
 net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntityId) const
@@ -467,17 +574,6 @@ ZoneServer::PlayerEntity* ZoneServer::findPlayerByCharacterId(const std::string&
     return &it->second;
 }
 
-void ZoneServer::removePlayer(const std::string& characterId)
-{
-    std::lock_guard<std::mutex> lock(stateMutex_);
-    const auto it = players_.find(characterId);
-    if (it != players_.end())
-    {
-        flushPlayerLocation(it->second);
-        players_.erase(it);
-    }
-}
-
 void ZoneServer::handleWorldPacket(
     const std::shared_ptr<TcpConnection>& connection,
     const net::SerializedPacket& packet)
@@ -614,6 +710,11 @@ void ZoneServer::handlePlayerEnterPrepare(
         prepare.characterId,
         prepare.zoneId);
 
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        players_.erase(prepare.characterId);
+    }
+
     net::LoadCharacterRequestPayload loadRequest;
     loadRequest.characterId = prepare.characterId;
     auto loadWriter = net::serialize(loadRequest);
@@ -685,6 +786,9 @@ void ZoneServer::handleClientPacket(
         break;
     case net::ClientPacketType::MerchantSellRequest:
         handleMerchantSell(connection, packet);
+        break;
+    case net::ClientPacketType::SessionEnd:
+        handleSessionEnd(connection, packet);
         break;
     case net::ClientPacketType::Ping:
     {
@@ -774,6 +878,7 @@ void ZoneServer::handleSessionResume(
     sendInventorySnapshot(*player);
 
     broadcastEntitySnapshot(selfEntityId);
+    sendZoneTransferCompleteToWorld(*player);
 }
 
 void ZoneServer::handleRequestZoneTiles(
@@ -983,10 +1088,7 @@ bool ZoneServer::spawnAiCompanion(
 
 void ZoneServer::persistPlayerState(const std::string& characterId, const CharacterState& state)
 {
-    if (findPlayerByCharacterId(characterId) != nullptr)
-    {
-        database_.updateCharacterState(characterId, state.toJson());
-    }
+    database_.updateCharacterState(characterId, state.toJson());
 }
 
 void ZoneServer::broadcastToPlayers(
@@ -1463,7 +1565,20 @@ void ZoneServer::handleUsePortal(
         return;
     }
 
-    flushPlayerLocation(*player);
+    if (player->inCombat)
+    {
+        result.message = "Cannot use portal while in combat";
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::UsePortalResult,
+            packet.header.sequenceId,
+            net::serialize(result),
+            packet.header.sessionTokenHash);
+        return;
+    }
+
+    persistPlayerToDatabase(*player);
+    player->locationDirty = false;
 
     {
         std::lock_guard<std::mutex> lock(stateMutex_);

@@ -37,6 +37,7 @@ public:
 
     bool connect(const std::string& host, uint16_t port);
     void close();
+    void disconnectGracefully();
     bool isConnected() const;
 
     bool sessionResume(
@@ -46,7 +47,7 @@ public:
         bool fetchTiles = true);
 
     bool moveTo(int32_t tileX, int32_t tileY, net::MoveResultPayload& outResult);
-    bool usePortal(net::ZoneConnectInfoPayload& outConnectInfo);
+    bool usePortal(net::ZoneConnectInfoPayload& outConnectInfo, std::string* outErrorMessage = nullptr);
     bool sendSayChat(const std::string& text);
     bool submitAction(const net::SubmitActionPayload& action, net::SubmitActionResultPayload& outResult);
     bool sendDebugCommand(net::DebugCommand command, const std::vector<std::string>& args, net::DebugCommandResponsePayload& outResponse);

@@ -7,10 +7,24 @@
 #include "tbeq/core/Config.hpp"
 #include "tbeq/core/Log.hpp"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 int main(int argc, char** argv)
 {
     tbeq::initLogging("world_login");
     auto config = tbeq::parseServerArgs(argc, argv, "world_login");
+
+#ifdef _WIN32
+    SetConsoleTitleA("TBEQ WorldLogin");
+#endif
 
     try
     {

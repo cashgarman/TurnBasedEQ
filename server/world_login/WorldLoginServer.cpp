@@ -12,7 +12,7 @@
 #include "tbeq/net/ClientPackets.hpp"
 #include "tbeq/net/PacketSerializer.hpp"
 #include "tbeq/net/ServerPackets.hpp"
-#include "tbeq/worldgen/WorldGenerator.hpp"
+#include "tbeq/worldgen/WorldBootstrap.hpp"
 
 namespace tbeq::server
 {
@@ -91,22 +91,10 @@ bool WorldLoginServer::bootstrapDatabase()
 
 bool WorldLoginServer::ensureWorldGenerated()
 {
-    if (database_.hasWorld())
-    {
-        spdlog::info("World already present in database");
-        return true;
-    }
-
-    spdlog::info("No world in database; generating seed {}", config_.worldSeed);
-    worldgen::WorldGenerator generator(config_.worldSeed, std::filesystem::path(config_.dataRoot));
-    if (!generator.writeToDatabase(database_))
-    {
-        spdlog::error("World generation failed");
-        return false;
-    }
-
-    spdlog::info("World generation complete");
-    return true;
+    return worldgen::ensureWorldInDatabase(
+        database_,
+        config_.worldSeed,
+        std::filesystem::path(config_.dataRoot));
 }
 
 nlohmann::json WorldLoginServer::loadJsonArray(const std::filesystem::path& path) const
@@ -511,6 +499,31 @@ void WorldLoginServer::handleZonePacket(std::shared_ptr<TcpConnection> connectio
             net::ServerPacketType::PlayerEnterPrepare,
             packet.header.sequenceId,
             net::serialize(prepare));
+        break;
+    }
+    case net::ServerPacketType::PlayerDisconnect:
+    {
+        net::PlayerDisconnectPayload disconnectPayload;
+        if (!net::deserializeServerPacket(packet, disconnectPayload))
+        {
+            return;
+        }
+        spdlog::info("PlayerDisconnect character={}", disconnectPayload.characterId);
+        break;
+    }
+    case net::ServerPacketType::ZoneTransferComplete:
+    {
+        net::ZoneTransferCompletePayload completePayload;
+        if (!net::deserializeServerPacket(packet, completePayload))
+        {
+            return;
+        }
+        spdlog::info(
+            "ZoneTransferComplete character={} zone={} pos=({}, {})",
+            completePayload.characterId,
+            completePayload.zoneId,
+            completePayload.posX,
+            completePayload.posY);
         break;
     }
     case net::ServerPacketType::DebugCommandRequest:

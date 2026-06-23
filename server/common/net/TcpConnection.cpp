@@ -51,6 +51,24 @@ void TcpConnection::doWrite()
         });
 }
 
+void TcpConnection::setCloseHandler(CloseHandler handler)
+{
+    closeHandler_ = std::move(handler);
+}
+
+void TcpConnection::notifyClosed()
+{
+    if (closeNotified_)
+    {
+        return;
+    }
+    closeNotified_ = true;
+    if (closeHandler_)
+    {
+        closeHandler_(shared_from_this());
+    }
+}
+
 void TcpConnection::close()
 {
     if (closed_)
@@ -63,6 +81,7 @@ void TcpConnection::close()
     std::error_code ec;
     socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
     socket_.close(ec);
+    notifyClosed();
 }
 
 void TcpConnection::readHeader()
@@ -137,10 +156,15 @@ void TcpConnection::handleError(const std::error_code& ec, const char* where)
     close();
 }
 
-TcpAcceptor::TcpAcceptor(asio::io_context& io, uint16_t port, TcpConnection::PacketHandler handler)
+TcpAcceptor::TcpAcceptor(
+    asio::io_context& io,
+    uint16_t port,
+    TcpConnection::PacketHandler handler,
+    ConnectionHandler connectionHandler)
     : io_(io)
     , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port))
     , handler_(std::move(handler))
+    , connectionHandler_(std::move(connectionHandler))
 {
     doAccept();
 }
@@ -153,6 +177,10 @@ void TcpAcceptor::doAccept()
             if (!ec)
             {
                 auto connection = std::make_shared<TcpConnection>(std::move(socket), handler_);
+                if (connectionHandler_)
+                {
+                    connectionHandler_(connection);
+                }
                 connection->start();
             }
             doAccept();
