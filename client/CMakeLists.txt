@@ -4,7 +4,9 @@ add_executable(tbeq_client
     net/LoginProfiler.cpp
     net/ZoneClient.cpp
     render/procedural/TileGenerator.cpp
+    render/procedural/SpriteGenerator.cpp
     render/TilemapRenderer.cpp
+    render/EntityRenderer.cpp
     ui/GameWindow.cpp
     ui/WindowLayoutManager.cpp
     ui/combat/CombatWindow.cpp

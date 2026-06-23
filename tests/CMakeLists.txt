@@ -34,6 +34,7 @@ add_executable(tbeq_tests_unit
     unit/worldgen/world_validator_test.cpp
     unit/world/collision_test.cpp
     unit/render/tile_generator_test.cpp
+    unit/render/sprite_generator_test.cpp
     unit/shared/combat_initiative_test.cpp
     unit/shared/combat_hit_miss_test.cpp
     unit/shared/combat_flee_test.cpp
@@ -62,6 +63,7 @@ target_include_directories(tbeq_tests_unit
 
 target_sources(tbeq_tests_unit PRIVATE
     ${CMAKE_SOURCE_DIR}/client/render/procedural/TileGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/client/render/procedural/SpriteGenerator.cpp
 )
 
 add_executable(tbeq_tests_integration

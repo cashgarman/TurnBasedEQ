@@ -347,6 +347,9 @@ ByteWriter serialize(const EntityStatePayload& payload)
     writer.writeU8(payload.entityType);
     writer.writeU32(static_cast<uint32_t>(payload.tileX));
     writer.writeU32(static_cast<uint32_t>(payload.tileY));
+    writer.writeString(payload.raceId);
+    writer.writeString(payload.classId);
+    writer.writeString(payload.appearanceId);
     return writer;
 }
 
@@ -917,6 +920,19 @@ bool deserializeEntityState(ByteReader& reader, EntityStatePayload& out)
     }
     out.tileX = static_cast<int32_t>(tileX);
     out.tileY = static_cast<int32_t>(tileY);
+
+    out.raceId.clear();
+    out.classId.clear();
+    out.appearanceId.clear();
+    if (reader.hasRemaining())
+    {
+        if (!reader.readString(out.raceId)
+            || !reader.readString(out.classId)
+            || !reader.readString(out.appearanceId))
+        {
+            return false;
+        }
+    }
     return true;
 }
 

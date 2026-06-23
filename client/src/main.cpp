@@ -20,7 +20,9 @@
 #include "net/LocalClusterLauncher.hpp"
 #include "net/LoginProfiler.hpp"
 #include "net/ZoneClient.hpp"
+#include "render/EntityRenderer.hpp"
 #include "render/TilemapRenderer.hpp"
+#include "render/procedural/SpriteGenerator.hpp"
 #include "render/procedural/TileGenerator.hpp"
 #include "tbeq/core/Log.hpp"
 #include "tbeq/net/ClientPackets.hpp"
@@ -49,6 +51,9 @@ enum class ClientState
 struct LoginSession
 {
     std::string characterId;
+    std::string characterName;
+    std::string raceId = "human";
+    std::string classId = "warrior";
     uint64_t sessionTokenHash = 0;
     tbeq::net::ZoneConnectInfoPayload zoneConnect;
 };
@@ -73,8 +78,10 @@ struct ClientApp
     asio::io_context io;
     tbeq::world::TileDefCatalog tileDefs;
     tbeq::render::TileStyleCatalog styleCatalog;
+    tbeq::render::EntitySpriteCatalog entitySpriteCatalog;
     std::unique_ptr<tbeq::client::ZoneClient> zoneClient;
     std::unique_ptr<tbeq::client::TilemapRenderer> tilemapRenderer;
+    std::unique_ptr<tbeq::client::EntityRenderer> entityRenderer;
     tbeq::net::ZoneSnapshotPayload zoneSnapshot;
     LoginSession session;
     int32_t cameraTileX = 0;
@@ -156,8 +163,14 @@ struct ClientApp
             spdlog::error("Failed to load tile_styles.json");
             return false;
         }
+        if (!entitySpriteCatalog.loadFromFile(dataRoot / "entity_sprites.json"))
+        {
+            spdlog::error("Failed to load entity_sprites.json");
+            return false;
+        }
 
         tilemapRenderer = std::make_unique<tbeq::client::TilemapRenderer>(renderer);
+        entityRenderer = std::make_unique<tbeq::client::EntityRenderer>(renderer);
 
         layoutManager.registerWindow(hudWindow);
         layoutManager.registerWindow(chatWindow);
@@ -347,6 +360,8 @@ struct ClientApp
             createCharacter.name = characterNameBuffer;
             createCharacter.raceId = "human";
             createCharacter.classId = "warrior";
+            std::string selectedRaceId = createCharacter.raceId;
+            std::string selectedClassId = createCharacter.classId;
             sendPacket(
                 tbeq::net::ClientPacketType::CreateCharacterRequest,
                 4,
@@ -393,6 +408,8 @@ struct ClientApp
                     if (character.name == characterNameBuffer)
                     {
                         characterId = character.characterId;
+                        selectedRaceId = character.raceId;
+                        selectedClassId = character.classId;
                         break;
                     }
                 }
@@ -437,6 +454,9 @@ struct ClientApp
                 zoneConnect.zoneId);
 
             outSession.characterId = zoneConnect.characterId;
+            outSession.characterName = characterNameBuffer;
+            outSession.raceId = selectedRaceId;
+            outSession.classId = selectedClassId;
             outSession.sessionTokenHash = zoneConnect.sessionResumeToken;
             outSession.zoneConnect = zoneConnect;
             return true;
@@ -571,8 +591,23 @@ struct ClientApp
         tilemapRenderer->setTileDefs(&tileDefs);
         tilemapRenderer->setZoneSnapshot(zoneSnapshot);
 
-        cameraTileX = std::max(0, zoneSnapshot.width / 2 - 10);
-        cameraTileY = std::max(0, zoneSnapshot.height / 2 - 6);
+        entityRenderer->clear();
+        entityRenderer->setStyleCatalog(style);
+        entityRenderer->setSpriteCatalog(&entitySpriteCatalog);
+        entityRenderer->setLocalPlayer(
+            zoneClient->playerEntityId(),
+            loginSession.characterName.empty() ? characterNameBuffer : loginSession.characterName,
+            loginSession.raceId,
+            loginSession.classId,
+            zoneClient->playerTileX(),
+            zoneClient->playerTileY());
+        while (auto snapshot = zoneClient->pollEntitySnapshot())
+        {
+            entityRenderer->applySnapshot(*snapshot);
+        }
+
+        cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
+        cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
         state = ClientState::InZone;
         statusMessage = "In zone: " + zoneSnapshot.zoneName;
         chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Use WASD to move.");
@@ -674,6 +709,18 @@ struct ClientApp
                         const auto* style = styleCatalog.find(zoneSnapshot.tileStyle);
                         tilemapRenderer->setStyleCatalog(style);
                         tilemapRenderer->setZoneSnapshot(zoneSnapshot);
+                        entityRenderer->clear();
+                        entityRenderer->setStyleCatalog(style);
+                        entityRenderer->setSpriteCatalog(&entitySpriteCatalog);
+                        entityRenderer->setLocalPlayer(
+                            zoneClient->playerEntityId(),
+                            session.characterName.empty() ? characterNameBuffer : session.characterName,
+                            session.raceId,
+                            session.classId,
+                            zoneClient->playerTileX(),
+                            zoneClient->playerTileY());
+                        cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
+                        cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
                         chatLines.push_back("[System] Transferred to " + zoneSnapshot.zoneName);
                     }
                 }
@@ -687,6 +734,7 @@ struct ClientApp
             tbeq::net::MoveResultPayload moveResult;
             if (zoneClient->moveTo(targetX, targetY, moveResult) && moveResult.ok)
             {
+                entityRenderer->updateLocalPlayerPosition(moveResult.tileX, moveResult.tileY);
                 cameraTileX = std::max(0, moveResult.tileX - 10);
                 cameraTileY = std::max(0, moveResult.tileY - 6);
             }
@@ -695,7 +743,7 @@ struct ClientApp
 
     void renderWorld()
     {
-        if (state != ClientState::InZone || tilemapRenderer == nullptr)
+        if (state != ClientState::InZone || tilemapRenderer == nullptr || entityRenderer == nullptr)
         {
             return;
         }
@@ -705,6 +753,13 @@ struct ClientApp
 
         const int viewTilesWide = width / tbeq::render::TileGenerator::kTileSize + 2;
         const int viewTilesHigh = height / tbeq::render::TileGenerator::kTileSize + 2;
+
+        if (zoneClient != nullptr && entityRenderer != nullptr)
+        {
+            cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
+            cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
+        }
+
         tilemapRenderer->render(cameraTileX, cameraTileY, viewTilesWide, viewTilesHigh);
 
         if (zoneClient != nullptr)
@@ -720,8 +775,10 @@ struct ClientApp
 
             if (auto snapshot = zoneClient->pollEntitySnapshot())
             {
-                (void)snapshot;
+                entityRenderer->applySnapshot(*snapshot);
             }
+
+            entityRenderer->render(cameraTileX, cameraTileY, viewTilesWide, viewTilesHigh);
         }
     }
 
@@ -825,6 +882,31 @@ struct ClientApp
                         p0,
                         p1,
                         IM_COL32(color.r, color.g, color.b, color.a));
+                }
+            }
+
+            if (entityRenderer != nullptr)
+            {
+                const float dotSize = std::max(2.0f, scale * 2.0f);
+                for (const auto& dot : entityRenderer->minimapDots())
+                {
+                    ImU32 dotColor = IM_COL32(220, 220, 220, 255);
+                    if (dot.isLocalPlayer)
+                    {
+                        dotColor = IM_COL32(255, 255, 80, 255);
+                    }
+                    else if (dot.entityType != 0)
+                    {
+                        dotColor = IM_COL32(180, 120, 255, 255);
+                    }
+
+                    const ImVec2 center(
+                        origin.x + (dot.tileX + 0.5f) * scale,
+                        origin.y + (dot.tileY + 0.5f) * scale);
+                    drawList->AddRectFilled(
+                        ImVec2(center.x - dotSize * 0.5f, center.y - dotSize * 0.5f),
+                        ImVec2(center.x + dotSize * 0.5f, center.y + dotSize * 0.5f),
+                        dotColor);
                 }
             }
         }

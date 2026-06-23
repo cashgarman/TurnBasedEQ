@@ -60,6 +60,7 @@ From the repo root (so `config/ui_layout.json` resolves correctly):
 - **HUD** and **Chat** shell windows are draggable and resizable
 - Layout persists to `config/ui_layout.json` on exit
 - **F1** toggles the debug menu (Debug builds) with a live spdlog log viewer
+- **Phase 3.5** — procedural entity sprites on the tilemap (players, other clients, zone NPCs)
 
 ## Project layout
 

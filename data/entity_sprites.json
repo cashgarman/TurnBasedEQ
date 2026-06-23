@@ -1,0 +1,23 @@
+{
+  "races": {
+    "human": {"hueOffset": 0, "saturation": 1.0, "lightness": 0.0},
+    "wood_elf": {"hueOffset": 28, "saturation": 1.05, "lightness": 0.08},
+    "dwarf": {"hueOffset": -12, "saturation": 0.92, "lightness": -0.06}
+  },
+  "classes": {
+    "warrior": {"accentMix": 0.35, "shadowMix": 0.55},
+    "cleric": {"accentMix": 0.25, "shadowMix": 0.45},
+    "wizard": {"accentMix": 0.45, "shadowMix": 0.40},
+    "rogue": {"accentMix": 0.30, "shadowMix": 0.65}
+  },
+  "npcRoles": {
+    "merchant": {"roleColor": "#c9a227", "silhouette": "wide"},
+    "lore": {"roleColor": "#6a8fc7", "silhouette": "tall"},
+    "quest": {"roleColor": "#7ab86a", "silhouette": "default"}
+  },
+  "defaults": {
+    "raceId": "human",
+    "classId": "warrior",
+    "npcRole": "quest"
+  }
+}

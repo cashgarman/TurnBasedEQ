@@ -97,3 +97,62 @@ TEST_CASE("Invalid packet header rejected", "[net]")
     tbeq::net::PacketHeader parsed;
     REQUIRE_FALSE(tbeq::net::readPacketHeader(bytes, parsed));
 }
+
+TEST_CASE("EntityStatePayload round-trip with appearance fields", "[net]")
+{
+    tbeq::net::EntityStatePayload original;
+    original.entityId = 42;
+    original.name = "DemoHero";
+    original.entityType = 0;
+    original.tileX = 12;
+    original.tileY = 34;
+    original.raceId = "wood_elf";
+    original.classId = "wizard";
+    original.appearanceId = "";
+
+    const auto writer = tbeq::net::serialize(original);
+    const auto packet = tbeq::net::serializeClientPacket(
+        tbeq::net::ClientPacketType::EntitySnapshot,
+        11,
+        tbeq::net::serialize(tbeq::net::EntitySnapshotPayload{{original}}));
+    const auto encoded = tbeq::net::encodePacket(packet);
+
+    tbeq::net::SerializedPacket decoded;
+    REQUIRE(tbeq::net::decodePacket(encoded, decoded));
+
+    tbeq::net::EntitySnapshotPayload parsedSnapshot;
+    REQUIRE(tbeq::net::deserializeClientPacket(decoded, parsedSnapshot));
+    REQUIRE(parsedSnapshot.entities.size() == 1);
+
+    const auto& parsed = parsedSnapshot.entities.front();
+    REQUIRE(parsed.entityId == original.entityId);
+    REQUIRE(parsed.name == original.name);
+    REQUIRE(parsed.entityType == original.entityType);
+    REQUIRE(parsed.tileX == original.tileX);
+    REQUIRE(parsed.tileY == original.tileY);
+    REQUIRE(parsed.raceId == original.raceId);
+    REQUIRE(parsed.classId == original.classId);
+    REQUIRE(parsed.appearanceId == original.appearanceId);
+}
+
+TEST_CASE("EntityStatePayload legacy payload deserializes with defaults", "[net]")
+{
+    tbeq::net::ByteWriter writer;
+    writer.writeU32(7);
+    writer.writeString("Merchant");
+    writer.writeU8(1);
+    writer.writeU32(20);
+    writer.writeU32(28);
+
+    tbeq::net::ByteReader reader(writer.data());
+    tbeq::net::EntityStatePayload parsed;
+    REQUIRE(tbeq::net::deserializeEntityState(reader, parsed));
+    REQUIRE(parsed.entityId == 7);
+    REQUIRE(parsed.name == "Merchant");
+    REQUIRE(parsed.entityType == 1);
+    REQUIRE(parsed.tileX == 20);
+    REQUIRE(parsed.tileY == 28);
+    REQUIRE(parsed.raceId.empty());
+    REQUIRE(parsed.classId.empty());
+    REQUIRE(parsed.appearanceId.empty());
+}

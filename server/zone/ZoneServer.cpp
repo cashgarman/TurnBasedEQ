@@ -283,6 +283,7 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         entity.entityType = 1;
         entity.tileX = npc.tileX;
         entity.tileY = npc.tileY;
+        entity.appearanceId = npc.slotType.empty() ? npc.npcId : npc.slotType;
         snapshot.entities.push_back(std::move(entity));
     }
 
@@ -298,6 +299,8 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         entity.entityType = 0;
         entity.tileX = player.tileX;
         entity.tileY = player.tileY;
+        entity.raceId = player.raceId;
+        entity.classId = player.classId;
         snapshot.entities.push_back(std::move(entity));
     }
 

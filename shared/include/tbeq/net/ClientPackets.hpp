@@ -129,6 +129,9 @@ struct EntityStatePayload
     uint8_t entityType = 0;
     int32_t tileX = 0;
     int32_t tileY = 0;
+    std::string raceId;
+    std::string classId;
+    std::string appearanceId;
 };
 
 struct EntitySnapshotPayload

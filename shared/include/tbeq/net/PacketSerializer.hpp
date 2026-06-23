@@ -76,6 +76,7 @@ bool deserializeClientPacket(const SerializedPacket& packet, SessionResumePayloa
 bool deserializeClientPacket(const SerializedPacket& packet, SessionResumeResponsePayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneSnapshotPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, EntitySnapshotPayload& out);
+bool deserializeEntityState(ByteReader& reader, EntityStatePayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, MoveIntentPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, MoveResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ChatMessagePayload& out);
