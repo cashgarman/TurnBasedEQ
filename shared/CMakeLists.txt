@@ -1,6 +1,7 @@
 add_library(tbeq_shared
     src/core/Log.cpp
     src/core/Config.cpp
+    src/core/CharacterState.cpp
     src/net/PacketSerializer.cpp
     src/persistence/Database.cpp
     src/auth/PasswordHash.cpp
@@ -9,6 +10,8 @@ add_library(tbeq_shared
     src/worldgen/WorldValidator.cpp
     src/world/TileDefCatalog.cpp
     src/world/ZoneGrid.cpp
+    src/content/MobCatalog.cpp
+    src/combat/CombatInstance.cpp
     src/social/ChatChannel.cpp
     src/npc/DialogTree.cpp
     src/npc/InteractionResolver.cpp

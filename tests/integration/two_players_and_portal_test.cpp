@@ -11,6 +11,13 @@
 namespace
 {
 
+constexpr auto kPollInterval = std::chrono::milliseconds(50);
+constexpr auto kHandoffStepTimeout = std::chrono::seconds(2);
+constexpr auto kZoneConnectTimeout = std::chrono::seconds(5);
+constexpr auto kSessionResumeTimeout = std::chrono::seconds(2);
+constexpr auto kEntitySyncTimeout = std::chrono::seconds(2);
+constexpr auto kMoveResultTimeout = std::chrono::seconds(2);
+
 bool serverExecutablesExist()
 {
     const std::filesystem::path repoRoot = TBEQ_REPO_ROOT;
@@ -25,6 +32,50 @@ struct LoginHandoffResult
     std::string characterId;
     tbeq::net::ZoneConnectInfoPayload zoneConnect;
 };
+
+std::optional<tbeq::net::SerializedPacket> pollClientPacket(
+    tbeq::test::HeadlessClient& client,
+    std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining <= std::chrono::milliseconds(0))
+        {
+            break;
+        }
+
+        const auto pollMs = std::min(remaining, kPollInterval);
+        const auto packet = client.readClientPacket(pollMs);
+        if (packet.has_value())
+        {
+            return packet;
+        }
+    }
+    return std::nullopt;
+}
+
+void drainClientPackets(tbeq::test::HeadlessClient& client, std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining <= std::chrono::milliseconds(0))
+        {
+            break;
+        }
+
+        const auto pollMs = std::min(remaining, kPollInterval);
+        if (!client.readClientPacket(pollMs).has_value())
+        {
+            return;
+        }
+    }
+}
 
 std::optional<tbeq::net::SerializedPacket> readClientPacketOfType(
     tbeq::test::HeadlessClient& client,
@@ -41,7 +92,7 @@ std::optional<tbeq::net::SerializedPacket> readClientPacketOfType(
             break;
         }
 
-        const auto packet = client.readClientPacket(remaining);
+        const auto packet = pollClientPacket(client, remaining);
         if (!packet.has_value())
         {
             continue;
@@ -70,7 +121,7 @@ std::optional<LoginHandoffResult> loginCreateAndHandoff(
         1,
         tbeq::net::serialize(createAccount));
 
-    const auto createAccountResponsePacket = client.readClientPacket(std::chrono::seconds(3));
+    const auto createAccountResponsePacket = pollClientPacket(client, kHandoffStepTimeout);
     if (!createAccountResponsePacket.has_value())
     {
         return std::nullopt;
@@ -81,7 +132,7 @@ std::optional<LoginHandoffResult> loginCreateAndHandoff(
     login.password = password;
     client.sendClientPacket(tbeq::net::ClientPacketType::LoginRequest, 2, tbeq::net::serialize(login));
 
-    const auto loginResponsePacket = client.readClientPacket(std::chrono::seconds(3));
+    const auto loginResponsePacket = pollClientPacket(client, kHandoffStepTimeout);
     if (!loginResponsePacket.has_value())
     {
         return std::nullopt;
@@ -104,7 +155,7 @@ std::optional<LoginHandoffResult> loginCreateAndHandoff(
         tbeq::net::serialize(createCharacter),
         loginResponse.sessionTokenHash);
 
-    const auto createCharacterResponsePacket = client.readClientPacket(std::chrono::seconds(3));
+    const auto createCharacterResponsePacket = pollClientPacket(client, kHandoffStepTimeout);
     if (!createCharacterResponsePacket.has_value())
     {
         return std::nullopt;
@@ -126,7 +177,7 @@ std::optional<LoginHandoffResult> loginCreateAndHandoff(
         tbeq::net::serialize(selectCharacter),
         loginResponse.sessionTokenHash);
 
-    const auto zoneConnectPacket = client.readClientPacket(std::chrono::seconds(5));
+    const auto zoneConnectPacket = pollClientPacket(client, kZoneConnectTimeout);
     if (!zoneConnectPacket.has_value())
     {
         return std::nullopt;
@@ -161,9 +212,17 @@ bool sessionResumeAndReadSnapshot(
 
     bool gotSnapshot = false;
     bool resumeOk = false;
-    for (int attempt = 0; attempt < 12; ++attempt)
+    const auto deadline = std::chrono::steady_clock::now() + kSessionResumeTimeout;
+    while (std::chrono::steady_clock::now() < deadline)
     {
-        const auto packet = client.readClientPacket(std::chrono::seconds(3));
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining <= std::chrono::milliseconds(0))
+        {
+            break;
+        }
+
+        const auto packet = pollClientPacket(client, remaining);
         if (!packet.has_value())
         {
             continue;
@@ -194,10 +253,12 @@ bool sessionResumeAndReadSnapshot(
                 return false;
             }
             gotSnapshot = true;
-            if (resumeOk)
-            {
-                return true;
-            }
+        }
+
+        if (resumeOk && gotSnapshot)
+        {
+            drainClientPackets(client, kPollInterval);
+            return true;
         }
     }
 
@@ -207,7 +268,7 @@ bool sessionResumeAndReadSnapshot(
 bool readMoveResult(
     tbeq::test::HeadlessClient& client,
     tbeq::net::MoveResultPayload& moveResult,
-    std::chrono::milliseconds timeout = std::chrono::seconds(5))
+    std::chrono::milliseconds timeout = kMoveResultTimeout)
 {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline)
@@ -219,7 +280,7 @@ bool readMoveResult(
             break;
         }
 
-        const auto packet = client.readClientPacket(remaining);
+        const auto packet = pollClientPacket(client, remaining);
         if (!packet.has_value())
         {
             continue;
@@ -229,6 +290,60 @@ bool readMoveResult(
         if (type == tbeq::net::ClientPacketType::MoveResult)
         {
             return tbeq::net::deserializeClientPacket(*packet, moveResult);
+        }
+    }
+
+    return false;
+}
+
+bool entitySnapshotContains(
+    const tbeq::net::EntitySnapshotPayload& entities,
+    const std::string& name,
+    int32_t tileY)
+{
+    for (const auto& entity : entities.entities)
+    {
+        if (entity.name == name && entity.tileY == tileY)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool waitForEntitySnapshot(
+    tbeq::test::HeadlessClient& client,
+    const std::string& name,
+    int32_t tileY,
+    std::chrono::milliseconds timeout = kEntitySyncTimeout)
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        if (remaining <= std::chrono::milliseconds(0))
+        {
+            break;
+        }
+
+        const auto packet = readClientPacketOfType(
+            client,
+            tbeq::net::ClientPacketType::EntitySnapshot,
+            remaining);
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        tbeq::net::EntitySnapshotPayload entities;
+        if (!tbeq::net::deserializeClientPacket(*packet, entities))
+        {
+            return false;
+        }
+        if (entitySnapshotContains(entities, name, tileY))
+        {
+            return true;
         }
     }
 
@@ -283,34 +398,7 @@ TEST_CASE("two players see each other after movement", "[integration][movement]"
     REQUIRE(readMoveResult(clientA, moveResult));
     REQUIRE(moveResult.ok);
 
-    bool sawHeroA = false;
-    for (int attempt = 0; attempt < 8; ++attempt)
-    {
-        const auto entityPacket = clientB.readClientPacket(std::chrono::seconds(3));
-        if (!entityPacket.has_value())
-        {
-            continue;
-        }
-
-        if (static_cast<tbeq::net::ClientPacketType>(entityPacket->header.packetType)
-            != tbeq::net::ClientPacketType::EntitySnapshot)
-        {
-            continue;
-        }
-
-        tbeq::net::EntitySnapshotPayload entities;
-        REQUIRE(tbeq::net::deserializeClientPacket(*entityPacket, entities));
-        for (const auto& entity : entities.entities)
-        {
-            if (entity.name == "HeroA_2p" && entity.tileY == 33)
-            {
-                sawHeroA = true;
-                break;
-            }
-        }
-    }
-
-    REQUIRE(sawHeroA);
+    REQUIRE(waitForEntitySnapshot(clientB, "HeroA_2p", 33));
 }
 
 TEST_CASE("zone portal transfer reaches destination zone", "[integration][movement]")

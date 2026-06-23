@@ -31,6 +31,7 @@ target_link_libraries(tbeq_world_login
 add_executable(tbeq_zone_server
     zone/main.cpp
     zone/ZoneServer.cpp
+    zone/combat/CombatManager.cpp
 )
 
 target_include_directories(tbeq_zone_server

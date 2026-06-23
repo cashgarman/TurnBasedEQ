@@ -34,6 +34,9 @@ add_executable(tbeq_tests_unit
     unit/worldgen/world_validator_test.cpp
     unit/world/collision_test.cpp
     unit/render/tile_generator_test.cpp
+    unit/shared/combat_initiative_test.cpp
+    unit/shared/combat_hit_miss_test.cpp
+    unit/shared/combat_flee_test.cpp
 )
 
 target_link_libraries(tbeq_tests_unit
@@ -65,6 +68,7 @@ add_executable(tbeq_tests_integration
     integration/cluster_registers_test.cpp
     integration/login_and_handoff_test.cpp
     integration/two_players_and_portal_test.cpp
+    integration/combat_encounter_test.cpp
 )
 
 target_link_libraries(tbeq_tests_integration

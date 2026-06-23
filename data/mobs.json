@@ -1,0 +1,64 @@
+{
+  "mobTables": {
+    "forest_tier1": {
+      "mobs": ["forest_rat", "forest_rat"]
+    },
+    "forest_tier2": {
+      "mobs": ["forest_boar", "forest_boar"]
+    },
+    "goblin_tier1": {
+      "mobs": ["goblin_scout", "goblin_scout"]
+    },
+    "goblin_boss": {
+      "mobs": ["goblin_chief"]
+    }
+  },
+  "mobs": {
+    "forest_rat": {
+      "name": "Forest Rat",
+      "level": 1,
+      "hp": 24,
+      "offense": 8,
+      "defense": 6,
+      "agi": 65,
+      "loot": [
+        { "itemId": "rat_tail", "minQuantity": 1, "maxQuantity": 1, "dropChance": 60 }
+      ]
+    },
+    "forest_boar": {
+      "name": "Forest Boar",
+      "level": 2,
+      "hp": 40,
+      "offense": 12,
+      "defense": 10,
+      "agi": 55,
+      "loot": [
+        { "itemId": "boar_hide", "minQuantity": 1, "maxQuantity": 2, "dropChance": 75 }
+      ]
+    },
+    "goblin_scout": {
+      "name": "Goblin Scout",
+      "level": 2,
+      "hp": 36,
+      "offense": 11,
+      "defense": 9,
+      "agi": 70,
+      "loot": [
+        { "itemId": "rusty_dagger", "minQuantity": 1, "maxQuantity": 1, "dropChance": 25 },
+        { "itemId": "goblin_tooth", "minQuantity": 1, "maxQuantity": 2, "dropChance": 80 }
+      ]
+    },
+    "goblin_chief": {
+      "name": "Goblin Chief",
+      "level": 4,
+      "hp": 90,
+      "offense": 16,
+      "defense": 14,
+      "agi": 60,
+      "loot": [
+        { "itemId": "chief_blade", "minQuantity": 1, "maxQuantity": 1, "dropChance": 50 },
+        { "itemId": "goblin_tooth", "minQuantity": 2, "maxQuantity": 4, "dropChance": 100 }
+      ]
+    }
+  }
+}

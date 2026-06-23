@@ -5,6 +5,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include "tbeq/combat/CombatTypes.hpp"
 #include "tbeq/net/ClientPackets.hpp"
 #include "tbeq/net/PacketSerializer.hpp"
 #include "tbeq/net/ServerPackets.hpp"
@@ -17,6 +18,7 @@ namespace
 {
 
 constexpr int32_t kSayRadiusTiles = 15;
+constexpr int32_t kAggroRadiusTiles = 3;
 
 } // namespace
 
@@ -43,12 +45,42 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         throw std::runtime_error("Failed to load tile_defs.json");
     }
 
+    const auto mobsPath = std::filesystem::path(config.dataRoot) / "mobs.json";
+    if (!mobCatalog_.loadFromFile(mobsPath))
+    {
+        throw std::runtime_error("Failed to load mobs.json");
+    }
+
     if (!loadZoneData())
     {
         throw std::runtime_error("Failed to load zone data from database");
     }
 
     spawnNpcEntities();
+    loadZoneSpawns();
+
+    combatManager_ = std::make_unique<CombatManager>(
+        io_,
+        skillResolver_,
+        mobCatalog_,
+        [this](const std::string& characterId) -> CombatManager::PlayerView*
+        {
+            PlayerEntity* player = findPlayerByCharacterId(characterId);
+            if (player == nullptr)
+            {
+                return nullptr;
+            }
+            combatViewScratch_ = makePlayerView(*player);
+            return &combatViewScratch_;
+        },
+        [this](const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer)
+        {
+            broadcastToPlayers(characterIds, type, writer);
+        },
+        [this](const std::string& characterId, const CharacterState& state)
+        {
+            persistPlayerState(characterId, state);
+        });
 
     spdlog::info(
         "ZoneServer {} loaded {}x{} with {} NPC slots",
@@ -66,6 +98,22 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
 bool ZoneServer::loadZoneData()
 {
     return zoneGrid_.loadFromDatabase(database_, config_.zoneId, tileDefs_);
+}
+
+void ZoneServer::loadZoneSpawns()
+{
+    spawns_.clear();
+    for (const auto& record : database_.loadZoneSpawns(config_.zoneId))
+    {
+        ZoneSpawnState spawn;
+        spawn.spawnId = record.spawnId;
+        spawn.tileX = record.tileX;
+        spawn.tileY = record.tileY;
+        spawn.mobTable = record.mobTable;
+        spawn.respawnSeconds = record.respawnSeconds;
+        spawn.active = true;
+        spawns_.push_back(std::move(spawn));
+    }
 }
 
 void ZoneServer::spawnNpcEntities()
@@ -390,6 +438,14 @@ void ZoneServer::handleWorldPacket(
             PlayerEntity player;
             player.characterId = loadResponse.characterId;
             player.name = loadResponse.name;
+            player.raceId = loadResponse.raceId;
+            player.classId = loadResponse.classId;
+            player.level = loadResponse.level;
+            player.characterState = CharacterState::fromJson(loadResponse.stateJson);
+            if (player.characterState.skills.empty())
+            {
+                player.characterState = CharacterState::createDefault(player.classId, player.level);
+            }
             player.tileX = static_cast<int32_t>(std::lround(loadResponse.posX));
             player.tileY = static_cast<int32_t>(std::lround(loadResponse.posY));
             player.entityId = allocateEntityId();
@@ -490,6 +546,12 @@ void ZoneServer::handleClientPacket(
         break;
     case net::ClientPacketType::UsePortal:
         handleUsePortal(connection, packet);
+        break;
+    case net::ClientPacketType::SubmitAction:
+        handleSubmitAction(connection, packet);
+        break;
+    case net::ClientPacketType::DebugCommandRequest:
+        handleDebugCommand(connection, packet);
         break;
     case net::ClientPacketType::Ping:
     {
@@ -651,8 +713,242 @@ void ZoneServer::handleMoveIntent(
 
     if (result.ok)
     {
+        tryAggro(*player);
         broadcastEntitySnapshot();
     }
+}
+
+CombatManager::PlayerView ZoneServer::makePlayerView(PlayerEntity& player)
+{
+    CombatManager::PlayerView view;
+    view.characterId = player.characterId;
+    view.name = player.name;
+    view.classId = player.classId;
+    view.level = player.level;
+    view.state = &player.characterState;
+    view.inCombat = &player.inCombat;
+    view.combatId = &player.combatId;
+    view.combatSlot = &player.combatSlot;
+    return view;
+}
+
+void ZoneServer::broadcastToPlayers(
+    const std::vector<std::string>& characterIds,
+    net::ClientPacketType type,
+    const net::ByteWriter& writer)
+{
+    std::vector<std::pair<std::shared_ptr<TcpConnection>, uint64_t>> recipients;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        for (const auto& characterId : characterIds)
+        {
+            const auto it = players_.find(characterId);
+            if (it == players_.end() || !it->second.connected || !it->second.connection)
+            {
+                continue;
+            }
+            recipients.emplace_back(it->second.connection, it->second.sessionTokenHash);
+        }
+    }
+
+    for (const auto& [connection, sessionTokenHash] : recipients)
+    {
+        sendClientPacket(connection, type, 0, writer, sessionTokenHash);
+    }
+}
+
+void ZoneServer::persistPlayerState(const std::string& characterId, const CharacterState& state)
+{
+    database_.updateCharacterState(characterId, state.toJson());
+}
+
+void ZoneServer::tryAggro(PlayerEntity& player)
+{
+    if (player.inCombat || combatManager_ == nullptr)
+    {
+        return;
+    }
+
+    for (auto& spawn : spawns_)
+    {
+        if (!spawn.active)
+        {
+            continue;
+        }
+
+        const int32_t dx = std::abs(player.tileX - spawn.tileX);
+        const int32_t dy = std::abs(player.tileY - spawn.tileY);
+        if (dx > kAggroRadiusTiles || dy > kAggroRadiusTiles)
+        {
+            continue;
+        }
+
+        auto view = makePlayerView(player);
+        if (combatManager_->tryStartSpawnCombat(view, spawn.mobTable))
+        {
+            spawn.active = false;
+            spdlog::info(
+                "Combat started for {} at spawn {} ({}, {})",
+                player.characterId,
+                spawn.spawnId,
+                spawn.tileX,
+                spawn.tileY);
+            return;
+        }
+    }
+}
+
+void ZoneServer::handleSubmitAction(
+    const std::shared_ptr<TcpConnection>& connection,
+    const net::SerializedPacket& packet)
+{
+    net::SubmitActionPayload request;
+    net::SubmitActionResultPayload result;
+    if (!net::deserializeClientPacket(packet, request))
+    {
+        result.message = "Invalid submit action";
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::SubmitActionResult,
+            packet.header.sequenceId,
+            net::serialize(result),
+            packet.header.sessionTokenHash);
+        return;
+    }
+
+    PlayerEntity* player = findPlayerByConnection(connection);
+    if (player == nullptr || combatManager_ == nullptr)
+    {
+        result.message = "Not in zone";
+    }
+    else
+    {
+        combatManager_->submitAction(player->characterId, request, result);
+    }
+
+    sendClientPacket(
+        connection,
+        net::ClientPacketType::SubmitActionResult,
+        packet.header.sequenceId,
+        net::serialize(result),
+        packet.header.sessionTokenHash);
+}
+
+void ZoneServer::handleDebugCommand(
+    const std::shared_ptr<TcpConnection>& connection,
+    const net::SerializedPacket& packet)
+{
+    net::ClientDebugCommandRequestPayload request;
+    net::ClientDebugCommandResponsePayload response;
+    if (!net::deserializeClientPacket(packet, request))
+    {
+        response.message = "Invalid debug command";
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::DebugCommandResponse,
+            packet.header.sequenceId,
+            net::serialize(response),
+            packet.header.sessionTokenHash);
+        return;
+    }
+
+    if (!debugHandler_.devModeEnabled())
+    {
+        response.message = "Debug commands rejected: dev-mode is disabled";
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::DebugCommandResponse,
+            packet.header.sequenceId,
+            net::serialize(response),
+            packet.header.sessionTokenHash);
+        return;
+    }
+
+    PlayerEntity* player = findPlayerByConnection(connection);
+    switch (request.command)
+    {
+    case net::DebugCommand::SpawnMob:
+    {
+        if (player == nullptr || combatManager_ == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+
+        std::vector<std::string> mobIds;
+        if (!request.args.empty())
+        {
+            const auto tableMobs = mobCatalog_.resolveMobTable(request.args[0]);
+            if (!tableMobs.empty())
+            {
+                mobIds = tableMobs;
+            }
+            else
+            {
+                mobIds.push_back(request.args[0]);
+            }
+        }
+        else
+        {
+            mobIds.push_back("forest_rat");
+        }
+
+        auto view = makePlayerView(*player);
+        response.ok = combatManager_->startDebugCombat(view, mobIds);
+        response.message = response.ok ? "Combat started" : "Failed to start combat";
+        break;
+    }
+    case net::DebugCommand::KillTarget:
+    {
+        if (player == nullptr || combatManager_ == nullptr || request.args.empty())
+        {
+            response.message = "Usage: kill_target <combatSlot>";
+            break;
+        }
+        const uint32_t targetSlot = static_cast<uint32_t>(std::stoul(request.args[0]));
+        response.ok = combatManager_->killTargetInCombat(player->characterId, targetSlot);
+        response.message = response.ok ? "Target killed" : "Kill target failed";
+        break;
+    }
+    case net::DebugCommand::GodMode:
+    {
+        if (player == nullptr || combatManager_ == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        const bool enabled = request.args.empty() || request.args[0] != "off";
+        combatManager_->setGodMode(player->characterId, enabled);
+        response.ok = true;
+        response.message = enabled ? "God mode enabled" : "God mode disabled";
+        break;
+    }
+    case net::DebugCommand::ForceCombatEnd:
+    {
+        if (player == nullptr || combatManager_ == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        response.ok = combatManager_->forceEndCombat(player->characterId, combat::CombatOutcome::Victory);
+        response.message = response.ok ? "Combat ended" : "Not in combat";
+        break;
+    }
+    default:
+    {
+        const auto generic = debugHandler_.handle(request);
+        response.ok = generic.ok;
+        response.message = generic.message;
+        break;
+    }
+    }
+
+    sendClientPacket(
+        connection,
+        net::ClientPacketType::DebugCommandResponse,
+        packet.header.sequenceId,
+        net::serialize(response),
+        packet.header.sessionTokenHash);
 }
 
 void ZoneServer::deliverSayChat(const PlayerEntity& sender, const std::string& text)

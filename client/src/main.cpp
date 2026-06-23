@@ -28,6 +28,7 @@
 #include "tbeq/world/TileDefCatalog.hpp"
 #include "ui/GameWindow.hpp"
 #include "ui/WindowLayoutManager.hpp"
+#include "ui/combat/CombatWindow.hpp"
 
 #if TBEQ_ENABLE_DEBUG_MENU
 #include "ui/debug/DebugMenu.hpp"
@@ -85,6 +86,13 @@ struct ClientApp
     tbeq::ui::GameWindow hudWindow{"hud", "HUD", 240.0f, 100.0f};
     tbeq::ui::GameWindow chatWindow{"chat", "Chat", 360.0f, 220.0f};
     tbeq::ui::GameWindow minimapWindow{"minimap", "Minimap", 160.0f, 160.0f};
+    tbeq::ui::GameWindow combatWindowPanel{"combat", "Combat", 420.0f, 360.0f};
+    tbeq::client::CombatWindow combatWindow;
+    bool combatVisible = false;
+    uint16_t hudHp = 100;
+    uint16_t hudMaxHp = 100;
+    uint16_t hudMana = 50;
+    uint16_t hudMaxMana = 50;
 
 #if TBEQ_ENABLE_DEBUG_MENU
     tbeq::ui::GameWindow debugWindow{"debug_menu", "Debug Menu", 400.0f, 300.0f};
@@ -492,6 +500,61 @@ struct ClientApp
         {
             chatLines.push_back("[Say] " + deliver.senderName + ": " + deliver.text);
         });
+        zoneClient->setCombatStartCallback([this](const tbeq::net::CombatStartPayload& start)
+        {
+            combatWindow.applyStart(start);
+            for (const auto& participant : start.participants)
+            {
+                if (participant.isPlayerControlled)
+                {
+                    combatWindow.setPlayerCombatSlot(participant.combatSlot);
+                    hudHp = participant.hp;
+                    hudMaxHp = participant.maxHp;
+                    hudMana = participant.mana;
+                    hudMaxMana = participant.maxMana;
+                    break;
+                }
+            }
+            combatVisible = true;
+            chatLines.push_back("[System] Combat started!");
+        });
+        zoneClient->setCombatUpdateCallback([this](const tbeq::net::CombatUpdatePayload& update)
+        {
+            combatWindow.applyUpdate(update);
+            for (const auto& participant : update.participants)
+            {
+                if (participant.combatSlot == combatWindow.playerCombatSlot())
+                {
+                    hudHp = participant.hp;
+                    hudMaxHp = participant.maxHp;
+                    hudMana = participant.mana;
+                    hudMaxMana = participant.maxMana;
+                }
+            }
+        });
+        zoneClient->setCombatEventCallback([this](const tbeq::net::CombatEventPayload& event)
+        {
+            combatWindow.applyEvent(event);
+        });
+        zoneClient->setCombatEndCallback([this](const tbeq::net::CombatEndPayload& end)
+        {
+            combatWindow.applyEnd(end);
+            combatVisible = false;
+            chatLines.push_back("[System] " + end.message);
+        });
+        zoneClient->setVitalsCallback([this](const tbeq::net::CharacterVitalsPayload& vitals)
+        {
+            combatWindow.applyVitals(vitals);
+            hudHp = vitals.hp;
+            hudMaxHp = vitals.maxHp;
+            hudMana = vitals.mana;
+            hudMaxMana = vitals.maxMana;
+        });
+        zoneClient->setSkillGainCallback([this](const tbeq::net::SkillGainPayload& gain)
+        {
+            combatWindow.applySkillGain(gain);
+            chatLines.push_back("[System] " + gain.message);
+        });
 
         if (!zoneClient->sessionResume(
                 loginSession.characterId,
@@ -569,7 +632,7 @@ struct ClientApp
             layoutManager.markDirty();
         }
 #endif
-        else if (state == ClientState::InZone && event.type == SDL_KEYDOWN && zoneClient != nullptr)
+        else if (state == ClientState::InZone && event.type == SDL_KEYDOWN && zoneClient != nullptr && !combatWindow.isActive())
         {
             int32_t targetX = zoneClient->playerTileX();
             int32_t targetY = zoneClient->playerTileY();
@@ -648,6 +711,15 @@ struct ClientApp
 
         if (zoneClient != nullptr)
         {
+            zoneClient->pollGameplayPackets();
+
+            tbeq::net::SubmitActionPayload action;
+            if (combatWindow.consumePendingAction(action))
+            {
+                tbeq::net::SubmitActionResultPayload result;
+                zoneClient->submitAction(action, result);
+            }
+
             if (auto snapshot = zoneClient->pollEntitySnapshot())
             {
                 (void)snapshot;
@@ -699,7 +771,12 @@ struct ClientApp
             ImGui::Text("Zone: %s", zoneSnapshot.zoneName.c_str());
             ImGui::Text("Tile style: %s", zoneSnapshot.tileStyle.c_str());
             ImGui::Text("Position: (%d, %d)", zoneClient != nullptr ? zoneClient->playerTileX() : 0, zoneClient != nullptr ? zoneClient->playerTileY() : 0);
-            ImGui::TextUnformatted("WASD move | P use portal");
+            ImGui::ProgressBar(
+                hudMaxHp > 0 ? static_cast<float>(hudHp) / static_cast<float>(hudMaxHp) : 0.0f,
+                ImVec2(-1.0f, 0.0f),
+                (std::to_string(hudHp) + " / " + std::to_string(hudMaxHp)).c_str());
+            ImGui::Text("Mana: %u / %u", hudMana, hudMaxMana);
+            ImGui::TextUnformatted("WASD move | P use portal | F1 debug");
             if (hudWindow.syncFromImGui())
             {
                 layoutManager.markDirty();
@@ -761,10 +838,41 @@ struct ClientApp
             chatWindow.end();
         }
 
+        combatWindow.draw(combatWindowPanel, combatVisible, width, height);
+        if (combatVisible && combatWindowPanel.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+
 #if TBEQ_ENABLE_DEBUG_MENU
         if (debugWindow.begin(width, height))
         {
             debugMenu.update(debugVisible);
+            if (debugVisible && zoneClient != nullptr)
+            {
+                ImGui::Separator();
+                ImGui::TextUnformatted("Combat cheats (dev-mode server required)");
+                if (ImGui::Button("Spawn forest_rat"))
+                {
+                    tbeq::net::DebugCommandResponsePayload response;
+                    zoneClient->sendDebugCommand(tbeq::net::DebugCommand::SpawnMob, {"forest_rat"}, response);
+                    chatLines.push_back("[Debug] " + response.message);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("God mode"))
+                {
+                    tbeq::net::DebugCommandResponsePayload response;
+                    zoneClient->sendDebugCommand(tbeq::net::DebugCommand::GodMode, {"on"}, response);
+                    chatLines.push_back("[Debug] " + response.message);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Force combat end"))
+                {
+                    tbeq::net::DebugCommandResponsePayload response;
+                    zoneClient->sendDebugCommand(tbeq::net::DebugCommand::ForceCombatEnd, {}, response);
+                    chatLines.push_back("[Debug] " + response.message);
+                }
+            }
             if (debugWindow.syncFromImGui())
             {
                 layoutManager.markDirty();

@@ -1,0 +1,27 @@
+[
+  {
+    "id": "rat_tail",
+    "name": "Rat Tail",
+    "stackSize": 20
+  },
+  {
+    "id": "boar_hide",
+    "name": "Boar Hide",
+    "stackSize": 10
+  },
+  {
+    "id": "rusty_dagger",
+    "name": "Rusty Dagger",
+    "stackSize": 1
+  },
+  {
+    "id": "goblin_tooth",
+    "name": "Goblin Tooth",
+    "stackSize": 20
+  },
+  {
+    "id": "chief_blade",
+    "name": "Chief Blade",
+    "stackSize": 1
+  }
+]

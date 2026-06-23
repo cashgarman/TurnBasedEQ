@@ -430,6 +430,125 @@ ByteWriter serialize(const ZoneTileGridPayload& payload)
     return writer;
 }
 
+ByteWriter serialize(const CombatParticipantPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.combatSlot);
+    writer.writeString(payload.name);
+    writer.writeU8(payload.side);
+    writer.writeU16(payload.hp);
+    writer.writeU16(payload.maxHp);
+    writer.writeU16(payload.mana);
+    writer.writeU16(payload.maxMana);
+    writer.writeBool(payload.isAlive);
+    writer.writeBool(payload.isPlayerControlled);
+    return writer;
+}
+
+ByteWriter serialize(const CombatStartPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.combatId);
+    writer.writeU32(static_cast<uint32_t>(payload.participants.size()));
+    for (const auto& participant : payload.participants)
+    {
+        const auto participantWriter = serialize(participant);
+        writer.writeU32(static_cast<uint32_t>(participantWriter.data().size()));
+        for (const uint8_t byte : participantWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    writer.writeU32(static_cast<uint32_t>(payload.turnOrder.size()));
+    for (const uint32_t slot : payload.turnOrder)
+    {
+        writer.writeU32(slot);
+    }
+    writer.writeU32(payload.currentTurnIndex);
+    writer.writeU32(payload.currentActorSlot);
+    writer.writeU32(payload.turnDurationMs);
+    return writer;
+}
+
+ByteWriter serialize(const CombatUpdatePayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.combatId);
+    writer.writeU32(payload.currentTurnIndex);
+    writer.writeU32(payload.currentActorSlot);
+    writer.writeU32(payload.turnDurationMs);
+    writer.writeU32(static_cast<uint32_t>(payload.participants.size()));
+    for (const auto& participant : payload.participants)
+    {
+        const auto participantWriter = serialize(participant);
+        writer.writeU32(static_cast<uint32_t>(participantWriter.data().size()));
+        for (const uint8_t byte : participantWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    return writer;
+}
+
+ByteWriter serialize(const CombatEventPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.combatId);
+    writer.writeU8(payload.eventType);
+    writer.writeU32(payload.actorSlot);
+    writer.writeU32(payload.targetSlot);
+    writer.writeU32(static_cast<uint32_t>(payload.value));
+    writer.writeString(payload.message);
+    writer.writeString(payload.detail);
+    return writer;
+}
+
+ByteWriter serialize(const CombatEndPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.combatId);
+    writer.writeU8(payload.result);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const SubmitActionPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.combatId);
+    writer.writeU8(payload.actionType);
+    writer.writeU32(payload.targetCombatSlot);
+    return writer;
+}
+
+ByteWriter serialize(const SubmitActionResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const CharacterVitalsPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU16(payload.hp);
+    writer.writeU16(payload.maxHp);
+    writer.writeU16(payload.mana);
+    writer.writeU16(payload.maxMana);
+    return writer;
+}
+
+ByteWriter serialize(const SkillGainPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.skillId);
+    writer.writeU16(payload.oldLevel);
+    writer.writeU16(payload.newLevel);
+    writer.writeString(payload.message);
+    return writer;
+}
+
 ByteWriter serialize(const DebugCommandRequestPayload& payload)
 {
     ByteWriter writer;
@@ -928,6 +1047,211 @@ bool deserializeClientPacket(const SerializedPacket& packet, RequestZoneTilesPay
 {
     (void)out;
     return packet.header.packetType == static_cast<uint16_t>(ClientPacketType::RequestZoneTiles);
+}
+
+namespace
+{
+
+bool readCombatParticipant(ByteReader& reader, CombatParticipantPayload& out)
+{
+    return reader.readU32(out.combatSlot)
+        && reader.readString(out.name)
+        && reader.readU8(out.side)
+        && reader.readU16(out.hp)
+        && reader.readU16(out.maxHp)
+        && reader.readU16(out.mana)
+        && reader.readU16(out.maxMana)
+        && reader.readBool(out.isAlive)
+        && reader.readBool(out.isPlayerControlled);
+}
+
+bool readEmbeddedCombatParticipant(ByteReader& reader, CombatParticipantPayload& out)
+{
+    uint32_t byteCount = 0;
+    if (!reader.readU32(byteCount))
+    {
+        return false;
+    }
+
+    std::vector<uint8_t> bytes(byteCount);
+    for (uint32_t i = 0; i < byteCount; ++i)
+    {
+        uint8_t value = 0;
+        if (!reader.readU8(value))
+        {
+            return false;
+        }
+        bytes[i] = value;
+    }
+
+    ByteReader nested(bytes);
+    return readCombatParticipant(nested, out);
+}
+
+} // namespace
+
+bool deserializeClientPacket(const SerializedPacket& packet, CombatStartPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CombatStart))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    uint32_t participantCount = 0;
+    if (!reader.readU32(out.combatId) || !reader.readU32(participantCount))
+    {
+        return false;
+    }
+
+    out.participants.clear();
+    out.participants.reserve(participantCount);
+    for (uint32_t i = 0; i < participantCount; ++i)
+    {
+        CombatParticipantPayload participant;
+        if (!readEmbeddedCombatParticipant(reader, participant))
+        {
+            return false;
+        }
+        out.participants.push_back(std::move(participant));
+    }
+
+    uint32_t turnCount = 0;
+    if (!reader.readU32(turnCount))
+    {
+        return false;
+    }
+    out.turnOrder.clear();
+    out.turnOrder.reserve(turnCount);
+    for (uint32_t i = 0; i < turnCount; ++i)
+    {
+        uint32_t slot = 0;
+        if (!reader.readU32(slot))
+        {
+            return false;
+        }
+        out.turnOrder.push_back(slot);
+    }
+
+    return reader.readU32(out.currentTurnIndex)
+        && reader.readU32(out.currentActorSlot)
+        && reader.readU32(out.turnDurationMs);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CombatUpdatePayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CombatUpdate))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    uint32_t participantCount = 0;
+    if (!reader.readU32(out.combatId)
+        || !reader.readU32(out.currentTurnIndex)
+        || !reader.readU32(out.currentActorSlot)
+        || !reader.readU32(out.turnDurationMs)
+        || !reader.readU32(participantCount))
+    {
+        return false;
+    }
+
+    out.participants.clear();
+    out.participants.reserve(participantCount);
+    for (uint32_t i = 0; i < participantCount; ++i)
+    {
+        CombatParticipantPayload participant;
+        if (!readEmbeddedCombatParticipant(reader, participant))
+        {
+            return false;
+        }
+        out.participants.push_back(std::move(participant));
+    }
+    return true;
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CombatEventPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CombatEvent))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    uint32_t value = 0;
+    return reader.readU32(out.combatId)
+        && reader.readU8(out.eventType)
+        && reader.readU32(out.actorSlot)
+        && reader.readU32(out.targetSlot)
+        && reader.readU32(value)
+        && reader.readString(out.message)
+        && reader.readString(out.detail)
+        && (out.value = static_cast<int32_t>(value), true);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CombatEndPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CombatEnd))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readU32(out.combatId)
+        && reader.readU8(out.result)
+        && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SubmitAction))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readU32(out.combatId)
+        && reader.readU8(out.actionType)
+        && reader.readU32(out.targetCombatSlot);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SubmitActionResult))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, CharacterVitalsPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::CharacterVitals))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readU16(out.hp)
+        && reader.readU16(out.maxHp)
+        && reader.readU16(out.mana)
+        && reader.readU16(out.maxMana);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SkillGainPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SkillGain))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readString(out.skillId)
+        && reader.readU16(out.oldLevel)
+        && reader.readU16(out.newLevel)
+        && reader.readString(out.message);
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out)

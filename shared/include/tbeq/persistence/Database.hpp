@@ -80,6 +80,15 @@ struct NpcSlotRecord
     std::string npcId;
 };
 
+struct ZoneSpawnRecord
+{
+    std::string spawnId;
+    int32_t tileX = 0;
+    int32_t tileY = 0;
+    std::string mobTable;
+    int32_t respawnSeconds = 60;
+};
+
 class Database
 {
 public:
@@ -151,7 +160,9 @@ public:
     std::optional<ZoneMetadataRecord> loadZoneMetadata(const std::string& zoneId) const;
     std::vector<ZonePortalRecord> loadZonePortals(const std::string& zoneId) const;
     std::vector<NpcSlotRecord> loadZoneNpcSlots(const std::string& zoneId) const;
+    std::vector<ZoneSpawnRecord> loadZoneSpawns(const std::string& zoneId) const;
     bool updateCharacterLocation(const std::string& characterId, const std::string& zoneId, float posX, float posY);
+    bool updateCharacterState(const std::string& characterId, const std::string& stateJson);
 
 private:
     bool exec(const std::string& sql) const;

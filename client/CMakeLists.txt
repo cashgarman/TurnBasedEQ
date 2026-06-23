@@ -7,6 +7,7 @@ add_executable(tbeq_client
     render/TilemapRenderer.cpp
     ui/GameWindow.cpp
     ui/WindowLayoutManager.cpp
+    ui/combat/CombatWindow.cpp
     ui/debug/DebugMenu.cpp
     ui/debug/LogViewer.cpp
     ui/debug/UnitTestRunner.cpp

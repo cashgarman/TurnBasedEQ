@@ -740,6 +740,34 @@ FROM zone_npc_slots WHERE zone_id = ?;
     return slots;
 }
 
+std::vector<ZoneSpawnRecord> Database::loadZoneSpawns(const std::string& zoneId) const
+{
+    std::vector<ZoneSpawnRecord> spawns;
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = R"SQL(
+SELECT spawn_id, tile_x, tile_y, mob_table, respawn_s
+FROM zone_spawns WHERE zone_id = ?;
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return spawns;
+    }
+
+    bindText(stmt, 1, zoneId);
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        ZoneSpawnRecord spawn;
+        spawn.spawnId = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        spawn.tileX = sqlite3_column_int(stmt, 1);
+        spawn.tileY = sqlite3_column_int(stmt, 2);
+        spawn.mobTable = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        spawn.respawnSeconds = sqlite3_column_int(stmt, 4);
+        spawns.push_back(std::move(spawn));
+    }
+    sqlite3_finalize(stmt);
+    return spawns;
+}
+
 bool Database::updateCharacterLocation(const std::string& characterId, const std::string& zoneId, float posX, float posY)
 {
     sqlite3_stmt* stmt = nullptr;
@@ -753,6 +781,22 @@ bool Database::updateCharacterLocation(const std::string& characterId, const std
     sqlite3_bind_double(stmt, 2, posX);
     sqlite3_bind_double(stmt, 3, posY);
     bindText(stmt, 4, characterId);
+    const bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool Database::updateCharacterState(const std::string& characterId, const std::string& stateJson)
+{
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = "UPDATE characters SET state_json = ? WHERE id = ?;";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return false;
+    }
+
+    bindText(stmt, 1, stateJson);
+    bindText(stmt, 2, characterId);
     const bool ok = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);
     return ok;

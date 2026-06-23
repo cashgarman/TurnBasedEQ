@@ -431,6 +431,180 @@ bool ZoneClient::sendSayChat(const std::string& text)
     return sendPacket(net::ClientPacketType::ChatMessage, net::serialize(message), sessionTokenHash_);
 }
 
+bool ZoneClient::submitAction(const net::SubmitActionPayload& action, net::SubmitActionResultPayload& outResult)
+{
+    if (!sendPacket(net::ClientPacketType::SubmitAction, net::serialize(action), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        const auto type = static_cast<net::ClientPacketType>(packet->header.packetType);
+        if (type == net::ClientPacketType::SubmitActionResult)
+        {
+            if (!net::deserializeClientPacket(*packet, outResult))
+            {
+                return false;
+            }
+            return outResult.ok;
+        }
+    }
+
+    return false;
+}
+
+bool ZoneClient::sendDebugCommand(
+    net::DebugCommand command,
+    const std::vector<std::string>& args,
+    net::DebugCommandResponsePayload& outResponse)
+{
+    net::DebugCommandRequestPayload request;
+    request.command = command;
+    request.args = args;
+    if (!sendPacket(net::ClientPacketType::DebugCommandRequest, net::serialize(request), sessionTokenHash_))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remainingMs <= 0)
+        {
+            break;
+        }
+
+        const auto packet = readPacket(static_cast<int>(std::min<int64_t>(remainingMs, 2000)));
+        if (!packet.has_value())
+        {
+            continue;
+        }
+
+        dispatchGameplayPacket(*packet);
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::DebugCommandResponse)
+        {
+            return net::deserializeClientPacket(*packet, outResponse) && outResponse.ok;
+        }
+    }
+
+    return false;
+}
+
+void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
+{
+    const auto type = static_cast<net::ClientPacketType>(packet.header.packetType);
+    switch (type)
+    {
+    case net::ClientPacketType::EntitySnapshot:
+    {
+        net::EntitySnapshotPayload entities;
+        if (net::deserializeClientPacket(packet, entities))
+        {
+            pendingEntitySnapshots_.push_back(std::move(entities));
+        }
+        break;
+    }
+    case net::ClientPacketType::ChatDeliver:
+    {
+        net::ChatDeliverPayload deliver;
+        if (net::deserializeClientPacket(packet, deliver) && chatCallback_)
+        {
+            chatCallback_(deliver);
+        }
+        break;
+    }
+    case net::ClientPacketType::CombatStart:
+    {
+        net::CombatStartPayload start;
+        if (net::deserializeClientPacket(packet, start) && combatStartCallback_)
+        {
+            combatStartCallback_(start);
+        }
+        break;
+    }
+    case net::ClientPacketType::CombatUpdate:
+    {
+        net::CombatUpdatePayload update;
+        if (net::deserializeClientPacket(packet, update) && combatUpdateCallback_)
+        {
+            combatUpdateCallback_(update);
+        }
+        break;
+    }
+    case net::ClientPacketType::CombatEvent:
+    {
+        net::CombatEventPayload event;
+        if (net::deserializeClientPacket(packet, event) && combatEventCallback_)
+        {
+            combatEventCallback_(event);
+        }
+        break;
+    }
+    case net::ClientPacketType::CombatEnd:
+    {
+        net::CombatEndPayload endPayload;
+        if (net::deserializeClientPacket(packet, endPayload) && combatEndCallback_)
+        {
+            combatEndCallback_(endPayload);
+        }
+        break;
+    }
+    case net::ClientPacketType::CharacterVitals:
+    {
+        net::CharacterVitalsPayload vitals;
+        if (net::deserializeClientPacket(packet, vitals) && vitalsCallback_)
+        {
+            vitalsCallback_(vitals);
+        }
+        break;
+    }
+    case net::ClientPacketType::SkillGain:
+    {
+        net::SkillGainPayload gain;
+        if (net::deserializeClientPacket(packet, gain) && skillGainCallback_)
+        {
+            skillGainCallback_(gain);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void ZoneClient::pollGameplayPackets()
+{
+    while (true)
+    {
+        const auto packet = readPacket(0);
+        if (!packet.has_value())
+        {
+            break;
+        }
+        dispatchGameplayPacket(*packet);
+    }
+}
+
 std::optional<net::EntitySnapshotPayload> ZoneClient::pollEntitySnapshot()
 {
     if (!pendingEntitySnapshots_.empty())
@@ -462,6 +636,10 @@ std::optional<net::EntitySnapshotPayload> ZoneClient::pollEntitySnapshot()
             chatCallback_(deliver);
         }
     }
+    else
+    {
+        dispatchGameplayPacket(*packet);
+    }
 
     return std::nullopt;
 }
@@ -469,6 +647,36 @@ std::optional<net::EntitySnapshotPayload> ZoneClient::pollEntitySnapshot()
 void ZoneClient::setChatCallback(ChatCallback callback)
 {
     chatCallback_ = std::move(callback);
+}
+
+void ZoneClient::setCombatStartCallback(CombatStartCallback callback)
+{
+    combatStartCallback_ = std::move(callback);
+}
+
+void ZoneClient::setCombatUpdateCallback(CombatUpdateCallback callback)
+{
+    combatUpdateCallback_ = std::move(callback);
+}
+
+void ZoneClient::setCombatEventCallback(CombatEventCallback callback)
+{
+    combatEventCallback_ = std::move(callback);
+}
+
+void ZoneClient::setCombatEndCallback(CombatEndCallback callback)
+{
+    combatEndCallback_ = std::move(callback);
+}
+
+void ZoneClient::setVitalsCallback(VitalsCallback callback)
+{
+    vitalsCallback_ = std::move(callback);
+}
+
+void ZoneClient::setSkillGainCallback(SkillGainCallback callback)
+{
+    skillGainCallback_ = std::move(callback);
 }
 
 } // namespace tbeq::client

@@ -184,6 +184,85 @@ struct ZoneTileGridPayload
     std::vector<std::string> tiles;
 };
 
+struct CombatParticipantPayload
+{
+    uint32_t combatSlot = 0;
+    std::string name;
+    uint8_t side = 0;
+    uint16_t hp = 0;
+    uint16_t maxHp = 0;
+    uint16_t mana = 0;
+    uint16_t maxMana = 0;
+    bool isAlive = true;
+    bool isPlayerControlled = false;
+};
+
+struct CombatStartPayload
+{
+    uint32_t combatId = 0;
+    std::vector<CombatParticipantPayload> participants;
+    std::vector<uint32_t> turnOrder;
+    uint32_t currentTurnIndex = 0;
+    uint32_t currentActorSlot = 0;
+    uint32_t turnDurationMs = 0;
+};
+
+struct CombatUpdatePayload
+{
+    uint32_t combatId = 0;
+    uint32_t currentTurnIndex = 0;
+    uint32_t currentActorSlot = 0;
+    uint32_t turnDurationMs = 0;
+    std::vector<CombatParticipantPayload> participants;
+};
+
+struct CombatEventPayload
+{
+    uint32_t combatId = 0;
+    uint8_t eventType = 0;
+    uint32_t actorSlot = 0;
+    uint32_t targetSlot = 0;
+    int32_t value = 0;
+    std::string message;
+    std::string detail;
+};
+
+struct CombatEndPayload
+{
+    uint32_t combatId = 0;
+    uint8_t result = 0;
+    std::string message;
+};
+
+struct SubmitActionPayload
+{
+    uint32_t combatId = 0;
+    uint8_t actionType = 0;
+    uint32_t targetCombatSlot = 0;
+};
+
+struct SubmitActionResultPayload
+{
+    bool ok = false;
+    std::string message;
+};
+
+struct CharacterVitalsPayload
+{
+    uint16_t hp = 0;
+    uint16_t maxHp = 0;
+    uint16_t mana = 0;
+    uint16_t maxMana = 0;
+};
+
+struct SkillGainPayload
+{
+    std::string skillId;
+    uint16_t oldLevel = 0;
+    uint16_t newLevel = 0;
+    std::string message;
+};
+
 struct ZoneRegisterPayload
 {
     std::string zoneId;

@@ -84,6 +84,14 @@ bool deserializeClientPacket(const SerializedPacket& packet, UsePortalPayload& o
 bool deserializeClientPacket(const SerializedPacket& packet, UsePortalResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, RequestZoneTilesPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, CombatStartPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, CombatUpdatePayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, CombatEventPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, CombatEndPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionResultPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, CharacterVitalsPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, SkillGainPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandRequestPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, ClientDebugCommandResponsePayload& out);
 
@@ -129,6 +137,15 @@ ByteWriter serialize(const UsePortalPayload& payload);
 ByteWriter serialize(const UsePortalResultPayload& payload);
 ByteWriter serialize(const RequestZoneTilesPayload& payload);
 ByteWriter serialize(const ZoneTileGridPayload& payload);
+ByteWriter serialize(const CombatParticipantPayload& payload);
+ByteWriter serialize(const CombatStartPayload& payload);
+ByteWriter serialize(const CombatUpdatePayload& payload);
+ByteWriter serialize(const CombatEventPayload& payload);
+ByteWriter serialize(const CombatEndPayload& payload);
+ByteWriter serialize(const SubmitActionPayload& payload);
+ByteWriter serialize(const SubmitActionResultPayload& payload);
+ByteWriter serialize(const CharacterVitalsPayload& payload);
+ByteWriter serialize(const SkillGainPayload& payload);
 ByteWriter serialize(const DebugCommandRequestPayload& payload);
 ByteWriter serialize(const DebugCommandResponsePayload& payload);
 

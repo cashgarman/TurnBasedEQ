@@ -12,6 +12,10 @@ enum class DebugCommand : uint16_t
     Ping = 1,
     SubscribeLogs = 2,
     ResetUILayout = 3,
+    SpawnMob = 10,
+    KillTarget = 11,
+    GodMode = 12,
+    ForceCombatEnd = 13,
     Unknown = 9999,
 };
 

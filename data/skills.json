@@ -1,0 +1,20 @@
+[
+  {
+    "id": "offense",
+    "category": "combat_fundamentals",
+    "displayName": "Offense",
+    "description": "Improves melee hit chance and damage."
+  },
+  {
+    "id": "defense",
+    "category": "combat_fundamentals",
+    "displayName": "Defense",
+    "description": "Improves avoidance and flee success."
+  },
+  {
+    "id": "1h_slash",
+    "category": "melee_weapon",
+    "displayName": "1H Slashing",
+    "description": "Skill with one-handed slashing weapons."
+  }
+]
