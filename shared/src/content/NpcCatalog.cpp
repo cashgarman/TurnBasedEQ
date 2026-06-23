@@ -38,6 +38,17 @@ bool NpcCatalog::loadFromFile(const std::filesystem::path& path)
             }
         }
 
+        if (entry.contains("loreLines") && entry["loreLines"].is_array())
+        {
+            for (const auto& line : entry["loreLines"])
+            {
+                if (line.is_string())
+                {
+                    def.loreLines.push_back(line.get<std::string>());
+                }
+            }
+        }
+
         if (entry.contains("merchantStock") && entry["merchantStock"].is_object())
         {
             const auto& stock = entry["merchantStock"];
@@ -98,6 +109,9 @@ void NpcCatalog::registerLegacyAliases()
 
     addAlias("merchant_starter_1", "starter_city_merchant_1");
     addAlias("merchant_starter_2", "starter_city_merchant_2");
+    addAlias("lorekeeper_starter_1", "starter_city_lorekeeper_1");
+    addAlias("lorekeeper_starter_2", "starter_city_lorekeeper_2");
+    addAlias("lorekeeper_starter_3", "starter_city_lorekeeper_3");
 }
 
 const NpcDef* NpcCatalog::findNpc(const std::string& npcId) const

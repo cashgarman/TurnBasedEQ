@@ -351,6 +351,9 @@ ByteWriter serialize(const EntityStatePayload& payload)
     writer.writeString(payload.classId);
     writer.writeString(payload.appearanceId);
     writer.writeString(payload.equippedWeaponItemId);
+    writer.writeString(payload.equippedHeadItemId);
+    writer.writeString(payload.equippedChestItemId);
+    writer.writeString(payload.equippedHandsItemId);
     return writer;
 }
 
@@ -691,6 +694,9 @@ ByteWriter serialize(const MerchantBuyResultPayload& payload)
     ByteWriter writer;
     writer.writeBool(payload.ok);
     writer.writeString(payload.message);
+    writer.writeBool(payload.stockUpdated);
+    writer.writeString(payload.stockItemId);
+    writer.writeU16(payload.stockQuantity);
     return writer;
 }
 
@@ -708,6 +714,15 @@ ByteWriter serialize(const MerchantSellResultPayload& payload)
     ByteWriter writer;
     writer.writeBool(payload.ok);
     writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const NpcDialogOpenPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU32(payload.npcEntityId);
+    writer.writeString(payload.npcName);
+    writer.writeStringVector(payload.lines);
     return writer;
 }
 
@@ -1096,6 +1111,18 @@ bool deserializeEntityState(ByteReader& reader, EntityStatePayload& out)
     if (reader.hasRemaining())
     {
         if (!reader.readString(out.equippedWeaponItemId))
+        {
+            return false;
+        }
+    }
+    out.equippedHeadItemId.clear();
+    out.equippedChestItemId.clear();
+    out.equippedHandsItemId.clear();
+    if (reader.hasRemaining())
+    {
+        if (!reader.readString(out.equippedHeadItemId)
+            || !reader.readString(out.equippedChestItemId)
+            || !reader.readString(out.equippedHandsItemId))
         {
             return false;
         }
@@ -1652,7 +1679,23 @@ bool deserializeClientPacket(const SerializedPacket& packet, MerchantBuyResultPa
         return false;
     }
     ByteReader reader(packet.payload);
-    return reader.readBool(out.ok) && reader.readString(out.message);
+    out.stockUpdated = false;
+    out.stockItemId.clear();
+    out.stockQuantity = 0;
+    if (!reader.readBool(out.ok) || !reader.readString(out.message))
+    {
+        return false;
+    }
+    if (reader.hasRemaining())
+    {
+        if (!reader.readBool(out.stockUpdated)
+            || !reader.readString(out.stockItemId)
+            || !reader.readU16(out.stockQuantity))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellRequestPayload& out)
@@ -1675,6 +1718,18 @@ bool deserializeClientPacket(const SerializedPacket& packet, MerchantSellResultP
     }
     ByteReader reader(packet.payload);
     return reader.readBool(out.ok) && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, NpcDialogOpenPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::NpcDialogOpen))
+    {
+        return false;
+    }
+    ByteReader reader(packet.payload);
+    return reader.readU32(out.npcEntityId)
+        && reader.readString(out.npcName)
+        && reader.readStringVector(out.lines);
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, ZoneTileGridPayload& out)

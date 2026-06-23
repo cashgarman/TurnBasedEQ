@@ -1,8 +1,7 @@
-#include "inventory/InventoryWindow.hpp"
+#include "look/LookWindow.hpp"
 
 #include <imgui.h>
 
-#include "net/ZoneClient.hpp"
 #include "ui/GameWindow.hpp"
 
 namespace tbeq::client
@@ -34,17 +33,24 @@ const char* slotLabel(const std::string& slot)
 
 } // namespace
 
-void InventoryWindow::setItemCatalog(const content::ItemCatalog* catalog)
+void LookWindow::setItemCatalog(const content::ItemCatalog* catalog)
 {
     itemCatalog_ = catalog;
 }
 
-void InventoryWindow::applySnapshot(const net::InventorySnapshotPayload& snapshot)
+void LookWindow::setCharacterInfo(const std::string& name, const std::string& raceId, const std::string& classId)
+{
+    characterName_ = name;
+    raceId_ = raceId;
+    classId_ = classId;
+}
+
+void LookWindow::applySnapshot(const net::InventorySnapshotPayload& snapshot)
 {
     snapshot_ = snapshot;
 }
 
-std::string InventoryWindow::equippedItemInSlot(const std::string& slot) const
+std::string LookWindow::equippedItemInSlot(const std::string& slot) const
 {
     for (const auto& entry : snapshot_.equipment)
     {
@@ -56,19 +62,7 @@ std::string InventoryWindow::equippedItemInSlot(const std::string& slot) const
     return {};
 }
 
-uint16_t InventoryWindow::itemQuantity(const std::string& itemId) const
-{
-    for (const auto& entry : snapshot_.items)
-    {
-        if (entry.itemId == itemId)
-        {
-            return entry.quantity;
-        }
-    }
-    return 0;
-}
-
-SDL_Texture* InventoryWindow::iconTexture(const std::string& itemId)
+SDL_Texture* LookWindow::iconTexture(const std::string& itemId)
 {
     if (renderer_ == nullptr || itemCatalog_ == nullptr || itemId.empty())
     {
@@ -112,14 +106,12 @@ SDL_Texture* InventoryWindow::iconTexture(const std::string& itemId)
     return texture;
 }
 
-void InventoryWindow::draw(
+void LookWindow::draw(
     tbeq::ui::GameWindow& window,
     bool& visible,
-    ZoneClient* zoneClient,
     SDL_Renderer* renderer,
     int displayWidth,
-    int displayHeight,
-    const std::function<void(const std::string& line)>& appendLogLine)
+    int displayHeight)
 {
     renderer_ = renderer;
     if (!visible)
@@ -141,11 +133,20 @@ void InventoryWindow::draw(
         return;
     }
 
-    ImGui::Text("Gold: %u", snapshot_.gold);
+    ImGui::Text("%s", characterName_.empty() ? "Your Character" : characterName_.c_str());
+    if (!raceId_.empty() || !classId_.empty())
+    {
+        ImGui::Text("%s %s", raceId_.c_str(), classId_.c_str());
+    }
     ImGui::Separator();
-    ImGui::TextUnformatted("Equipment");
+    ImGui::TextUnformatted("Equipped Gear");
 
     static const char* kSlots[] = {"weapon", "head", "chest", "hands"};
+    int offenseBonus = 0;
+    int defenseBonus = 0;
+    int hpBonus = 0;
+    int manaBonus = 0;
+
     for (const char* slot : kSlots)
     {
         const std::string equippedId = equippedItemInSlot(slot);
@@ -153,66 +154,30 @@ void InventoryWindow::draw(
             ? nullptr
             : itemCatalog_->findItem(equippedId);
         const std::string label = item != nullptr ? item->name : "(empty)";
+
         SDL_Texture* icon = iconTexture(equippedId);
         if (icon != nullptr)
         {
             ImGui::Image(reinterpret_cast<ImTextureID>(icon), ImVec2(16.0f, 16.0f));
             ImGui::SameLine();
         }
+
         ImGui::Text("%s: %s", slotLabel(slot), label.c_str());
-        if (!equippedId.empty() && zoneClient != nullptr)
+        if (item != nullptr)
         {
-            ImGui::SameLine();
-            const std::string buttonLabel = std::string("Unequip ") + slot;
-            if (ImGui::SmallButton(buttonLabel.c_str()))
-            {
-                net::UnequipItemResultPayload result;
-                if (zoneClient->unequipItem(slot, result))
-                {
-                    appendLogLine("[Inventory] " + result.message);
-                }
-                else
-                {
-                    appendLogLine("[Inventory] Unequip failed: " + result.message);
-                }
-            }
+            offenseBonus += item->stats.offense;
+            defenseBonus += item->stats.defense;
+            hpBonus += item->stats.hp;
+            manaBonus += item->stats.mana;
         }
     }
 
     ImGui::Separator();
-    ImGui::TextUnformatted("Items");
-    ImGui::BeginChild("InventoryItems", ImVec2(0, 0), true);
-    for (const auto& entry : snapshot_.items)
-    {
-        const content::ItemDef* item = itemCatalog_ != nullptr ? itemCatalog_->findItem(entry.itemId) : nullptr;
-        const std::string name = item != nullptr ? item->name : entry.itemId;
-        SDL_Texture* icon = iconTexture(entry.itemId);
-        if (icon != nullptr)
-        {
-            ImGui::Image(reinterpret_cast<ImTextureID>(icon), ImVec2(16.0f, 16.0f));
-            ImGui::SameLine();
-        }
-
-        ImGui::Text("%s x%u", name.c_str(), entry.quantity);
-        if (item != nullptr && item->slot != content::ItemSlot::None && zoneClient != nullptr)
-        {
-            ImGui::SameLine();
-            const std::string buttonLabel = "Equip " + entry.itemId;
-            if (ImGui::SmallButton(buttonLabel.c_str()))
-            {
-                net::EquipItemResultPayload result;
-                if (zoneClient->equipItem(entry.itemId, result))
-                {
-                    appendLogLine("[Inventory] " + result.message);
-                }
-                else
-                {
-                    appendLogLine("[Inventory] Equip failed: " + result.message);
-                }
-            }
-        }
-    }
-    ImGui::EndChild();
+    ImGui::TextUnformatted("Gear Bonuses");
+    ImGui::Text("Offense +%d", offenseBonus);
+    ImGui::Text("Defense +%d", defenseBonus);
+    ImGui::Text("HP +%d", hpBonus);
+    ImGui::Text("Mana +%d", manaBonus);
 
     window.end();
     visible = window.state().visible;

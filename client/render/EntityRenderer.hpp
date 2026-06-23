@@ -38,7 +38,11 @@ public:
         int32_t tileX,
         int32_t tileY);
     void updateLocalPlayerPosition(int32_t tileX, int32_t tileY);
-    void setLocalPlayerEquippedWeapon(const std::string& itemId);
+    void setLocalPlayerEquipment(
+        const std::string& weaponItemId,
+        const std::string& headItemId,
+        const std::string& chestItemId,
+        const std::string& handsItemId);
 
     void render(int cameraTileX, int cameraTileY, int viewTilesWide, int viewTilesHigh);
 
@@ -85,6 +89,9 @@ private:
         std::string classId;
         std::string appearanceId;
         std::string equippedWeaponItemId;
+        std::string equippedHeadItemId;
+        std::string equippedChestItemId;
+        std::string equippedHandsItemId;
         int32_t tileX = 0;
         int32_t tileY = 0;
         int32_t prevTileX = 0;
@@ -100,6 +107,9 @@ private:
         std::string appearanceId;
         int frameIndex = 0;
         std::string equippedWeaponItemId;
+        std::string equippedHeadItemId;
+        std::string equippedChestItemId;
+        std::string equippedHandsItemId;
 
         bool operator==(const TextureKey& other) const
         {
@@ -108,7 +118,10 @@ private:
                 && classId == other.classId
                 && appearanceId == other.appearanceId
                 && frameIndex == other.frameIndex
-                && equippedWeaponItemId == other.equippedWeaponItemId;
+                && equippedWeaponItemId == other.equippedWeaponItemId
+                && equippedHeadItemId == other.equippedHeadItemId
+                && equippedChestItemId == other.equippedChestItemId
+                && equippedHandsItemId == other.equippedHandsItemId;
         }
     };
 
@@ -120,8 +133,11 @@ private:
                 ^ (std::hash<std::string>{}(key.classId) << 1)
                 ^ (std::hash<std::string>{}(key.appearanceId) << 2)
                 ^ (std::hash<std::string>{}(key.equippedWeaponItemId) << 3)
-                ^ (static_cast<std::size_t>(key.entityType) << 4)
-                ^ (static_cast<std::size_t>(key.frameIndex) << 5);
+                ^ (std::hash<std::string>{}(key.equippedHeadItemId) << 4)
+                ^ (std::hash<std::string>{}(key.equippedChestItemId) << 5)
+                ^ (std::hash<std::string>{}(key.equippedHandsItemId) << 6)
+                ^ (static_cast<std::size_t>(key.entityType) << 7)
+                ^ (static_cast<std::size_t>(key.frameIndex) << 8);
         }
     };
 

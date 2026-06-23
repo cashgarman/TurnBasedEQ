@@ -34,6 +34,8 @@
 #include "ui/combat/CombatWindow.hpp"
 #include "ui/inventory/InventoryWindow.hpp"
 #include "ui/merchant/MerchantWindow.hpp"
+#include "ui/look/LookWindow.hpp"
+#include "ui/dialog/NpcDialogWindow.hpp"
 #include "tbeq/content/ItemCatalog.hpp"
 
 #if TBEQ_ENABLE_DEBUG_MENU
@@ -137,12 +139,18 @@ struct ClientApp
     tbeq::ui::GameWindow combatWindowPanel{"combat", "Combat", 420.0f, 360.0f};
     tbeq::ui::GameWindow inventoryWindowPanel{"inventory", "Inventory", 360.0f, 320.0f};
     tbeq::ui::GameWindow merchantWindowPanel{"merchant", "Merchant", 400.0f, 340.0f};
+    tbeq::ui::GameWindow lookWindowPanel{"look", "Look", 320.0f, 280.0f};
+    tbeq::ui::GameWindow npcDialogWindowPanel{"npc_dialog", "NPC Dialog", 360.0f, 260.0f};
     tbeq::client::CombatWindow combatWindow;
     tbeq::client::InventoryWindow inventoryWindow;
     tbeq::client::MerchantWindow merchantWindow;
+    tbeq::client::LookWindow lookWindow;
+    tbeq::client::NpcDialogWindow npcDialogWindow;
     bool combatVisible = false;
     bool inventoryVisible = false;
     bool merchantVisible = false;
+    bool lookVisible = false;
+    bool npcDialogVisible = false;
     uint32_t hudGold = 0;
     uint16_t hudHp = 100;
     uint16_t hudMaxHp = 100;
@@ -249,6 +257,7 @@ struct ClientApp
 
         inventoryWindow.setItemCatalog(&itemCatalog);
         merchantWindow.setItemCatalog(&itemCatalog);
+        lookWindow.setItemCatalog(&itemCatalog);
 
         tilemapRenderer = std::make_unique<tbeq::client::TilemapRenderer>(renderer);
         entityRenderer = std::make_unique<tbeq::client::EntityRenderer>(renderer);
@@ -258,8 +267,11 @@ struct ClientApp
         layoutManager.registerWindow(minimapWindow);
         layoutManager.registerWindow(inventoryWindowPanel);
         layoutManager.registerWindow(merchantWindowPanel);
+        layoutManager.registerWindow(lookWindowPanel);
+        layoutManager.registerWindow(npcDialogWindowPanel);
 #if TBEQ_ENABLE_DEBUG_MENU
         layoutManager.registerWindow(debugWindow);
+        debugWindow.state().visible = false;
 #endif
         layoutManager.load();
 
@@ -267,7 +279,7 @@ struct ClientApp
         logViewer.setSink(tbeq::getRingBufferSink());
 #endif
 
-        chatLines.push_back("[System] Welcome to TurnBasedEQ Phase 5. I inventory, N interact, P portal.");
+        chatLines.push_back("[System] Welcome to TurnBasedEQ Phase 5. I inventory, L look, N interact, P portal.");
         spdlog::info("TurnBasedEQ client started");
         return true;
     }
@@ -581,18 +593,38 @@ struct ClientApp
     {
         hudGold = snapshot.gold;
         inventoryWindow.applySnapshot(snapshot);
+        lookWindow.applySnapshot(snapshot);
+
         std::string equippedWeapon;
+        std::string equippedHead;
+        std::string equippedChest;
+        std::string equippedHands;
         for (const auto& entry : snapshot.equipment)
         {
             if (entry.slot == "weapon")
             {
                 equippedWeapon = entry.itemId;
-                break;
+            }
+            else if (entry.slot == "head")
+            {
+                equippedHead = entry.itemId;
+            }
+            else if (entry.slot == "chest")
+            {
+                equippedChest = entry.itemId;
+            }
+            else if (entry.slot == "hands")
+            {
+                equippedHands = entry.itemId;
             }
         }
         if (entityRenderer != nullptr)
         {
-            entityRenderer->setLocalPlayerEquippedWeapon(equippedWeapon);
+            entityRenderer->setLocalPlayerEquipment(
+                equippedWeapon,
+                equippedHead,
+                equippedChest,
+                equippedHands);
         }
     }
 
@@ -681,6 +713,13 @@ struct ClientApp
             layoutManager.markDirty();
             chatLines.push_back("[System] Trading with " + open.npcName);
         });
+        zoneClient->setNpcDialogOpenCallback([this](const tbeq::net::NpcDialogOpenPayload& open)
+        {
+            npcDialogWindow.applyOpen(open);
+            npcDialogVisible = true;
+            npcDialogWindowPanel.state().visible = true;
+            layoutManager.markDirty();
+        });
     }
 
     void interactWithNpc(uint32_t npcEntityId)
@@ -706,21 +745,14 @@ struct ClientApp
             3);
         if (npcEntityId.has_value())
         {
-            if (const auto plate = entityRenderer->nearestNpcNameplate(
-                    zoneClient->playerTileX(),
-                    zoneClient->playerTileY(),
-                    3))
-            {
-                chatLines.push_back("[System] Interacting with " + plate->name + " (" + plate->role + ").");
-            }
             if (!zoneClient->interactNpc(*npcEntityId))
             {
-                chatLines.push_back("[System] Could not open merchant. Move closer or try again.");
+                chatLines.push_back("[System] Could not interact with that NPC. Move closer and try again.");
             }
         }
         else
         {
-            chatLines.push_back("[System] No NPC nearby. Walk next to a gold-outlined merchant and press N.");
+            chatLines.push_back("[System] No NPC nearby. Walk next to an outlined NPC (gold = merchant, blue = lorekeeper) and press N.");
         }
     }
 
@@ -772,12 +804,16 @@ struct ClientApp
         }
 
         applyInventorySnapshot(zoneClient->inventorySnapshot());
+        lookWindow.setCharacterInfo(
+            loginSession.characterName.empty() ? characterNameBuffer : loginSession.characterName,
+            loginSession.raceId,
+            loginSession.classId);
 
         cameraTileX = std::max(0, zoneClient->playerTileX() - 10);
         cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
         state = ClientState::InZone;
         statusMessage = "In zone: " + zoneSnapshot.zoneName;
-        chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Gold figures are merchants (N to trade).");
+        chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Gold outlines = merchants, blue = lorekeepers (N to interact).");
         chatLines.push_back("[System] North portal at tile (32, 8): walk there and press P to leave the city.");
         profiler.logSummary("enter_zone");
         return true;
@@ -833,12 +869,20 @@ struct ClientApp
             layoutManager.markDirty();
         }
 #endif
-        else if (state == ClientState::InZone && event.type == SDL_KEYDOWN && zoneClient != nullptr && !combatWindow.isActive())
+        else if (state == ClientState::InZone && event.type == SDL_KEYDOWN && zoneClient != nullptr
+            && !combatWindow.isActive() && !npcDialogVisible)
         {
             if (event.key.keysym.sym == SDLK_i)
             {
                 inventoryVisible = !inventoryVisible;
                 inventoryWindowPanel.state().visible = inventoryVisible;
+                layoutManager.markDirty();
+                return;
+            }
+            if (event.key.keysym.sym == SDLK_l)
+            {
+                lookVisible = !lookVisible;
+                lookWindowPanel.state().visible = lookVisible;
                 layoutManager.markDirty();
                 return;
             }
@@ -928,6 +972,7 @@ struct ClientApp
             && zoneClient != nullptr
             && entityRenderer != nullptr
             && !combatWindow.isActive()
+            && !npcDialogVisible
             && !ImGui::GetIO().WantCaptureMouse)
         {
             const int tileSize = tbeq::render::TileGenerator::kTileSize;
@@ -940,7 +985,7 @@ struct ClientApp
             {
                 if (!zoneClient->interactNpc(*npcEntityId))
                 {
-                    chatLines.push_back("[System] Could not open merchant. Move closer or try again.");
+                    chatLines.push_back("[System] Could not interact with that NPC. Move closer and try again.");
                 }
             }
         }
@@ -1004,19 +1049,37 @@ struct ClientApp
 
     void renderLoginPanel()
     {
+        constexpr float kPadding = 28.0f;
+        constexpr float kFieldWidth = 300.0f;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPadding, kPadding));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 12.0f));
         ImGui::SetNextWindowPos(ImVec2(width * 0.5f, height * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(420.0f, 260.0f), ImGuiCond_Always);
-        ImGui::Begin("TurnBasedEQ Login", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+
+        ImGui::Begin(
+            "TurnBasedEQ Login",
+            nullptr,
+            ImGuiWindowFlags_NoResize
+                | ImGuiWindowFlags_NoMove
+                | ImGuiWindowFlags_NoCollapse
+                | ImGuiWindowFlags_AlwaysAutoResize);
+
+        ImGui::PushItemWidth(kFieldWidth);
         ImGui::InputText("Username", usernameBuffer, sizeof(usernameBuffer));
         ImGui::InputText("Password", passwordBuffer, sizeof(passwordBuffer), ImGuiInputTextFlags_Password);
         ImGui::InputText("Character Name", characterNameBuffer, sizeof(characterNameBuffer));
+        ImGui::PopItemWidth();
+
+        ImGui::PushTextWrapPos(kFieldWidth);
         ImGui::TextWrapped("%s", statusMessage.c_str());
+        ImGui::PopTextWrapPos();
+
         const bool canStartLogin = !loginInProgress;
         if (!canStartLogin)
         {
             ImGui::BeginDisabled();
         }
-        if (ImGui::Button("Enter World"))
+        if (ImGui::Button("Enter World", ImVec2(kFieldWidth, 0.0f)))
         {
             loginInProgress = true;
             statusMessage = "Logging in... (see log for profile)";
@@ -1030,7 +1093,9 @@ struct ClientApp
         {
             ImGui::EndDisabled();
         }
+
         ImGui::End();
+        ImGui::PopStyleVar(2);
     }
 
 #if TBEQ_ENABLE_DEBUG_MENU
@@ -1076,13 +1141,28 @@ struct ClientApp
                 (std::to_string(hudHp) + " / " + std::to_string(hudMaxHp)).c_str());
             ImGui::Text("Mana: %u / %u", hudMana, hudMaxMana);
             ImGui::Text("Gold: %u", hudGold);
-            ImGui::TextUnformatted("WASD move | I inventory | N interact | P portal | F1 debug");
+            ImGui::TextUnformatted("WASD move | I inventory | L look | N interact | P portal");
         }
         if (hudWindow.syncFromImGui())
         {
             layoutManager.markDirty();
         }
         hudWindow.end();
+
+#if TBEQ_ENABLE_DEBUG_MENU
+        if (state == ClientState::InZone && !debugWindow.state().visible)
+        {
+            const ImVec2 hintPos(static_cast<float>(width) - 140.0f, static_cast<float>(height) - 28.0f);
+            ImGui::GetForegroundDrawList()->AddText(
+                ImVec2(hintPos.x + 1.0f, hintPos.y + 1.0f),
+                IM_COL32(0, 0, 0, 200),
+                "F1: Debug Menu");
+            ImGui::GetForegroundDrawList()->AddText(
+                hintPos,
+                IM_COL32(200, 200, 200, 220),
+                "F1: Debug Menu");
+        }
+#endif
 
         if (minimapWindow.begin(width, height))
         {
@@ -1198,6 +1278,18 @@ struct ClientApp
                 chatLines.push_back(line);
             });
         if (merchantWindowPanel.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+
+        lookWindow.draw(lookWindowPanel, lookVisible, renderer, width, height);
+        if (lookWindowPanel.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+
+        npcDialogWindow.draw(npcDialogWindowPanel, npcDialogVisible, width, height);
+        if (npcDialogWindowPanel.syncFromImGui())
         {
             layoutManager.markDirty();
         }

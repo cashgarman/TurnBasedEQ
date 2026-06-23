@@ -21,6 +21,23 @@ void MerchantWindow::applyOpen(const net::MerchantOpenPayload& open)
     sellItemIds_ = open.sellItemIds;
 }
 
+void MerchantWindow::applyStockUpdate(const net::MerchantBuyResultPayload& result)
+{
+    if (!result.stockUpdated || result.stockItemId.empty())
+    {
+        return;
+    }
+
+    for (auto& entry : stock_)
+    {
+        if (entry.itemId == result.stockItemId)
+        {
+            entry.quantity = result.stockQuantity;
+            break;
+        }
+    }
+}
+
 void MerchantWindow::clear()
 {
     npcEntityId_ = 0;
@@ -148,6 +165,7 @@ void MerchantWindow::draw(
                         net::MerchantBuyResultPayload result;
                         if (zoneClient->merchantBuy(npcEntityId_, entry.itemId, 1, result))
                         {
+                            applyStockUpdate(result);
                             appendLogLine("[Merchant] " + result.message);
                         }
                         else

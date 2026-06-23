@@ -31,6 +31,7 @@ public:
     using MerchantOpenCallback = std::function<void(const net::MerchantOpenPayload&)>;
     using MerchantBuyResultCallback = std::function<void(const net::MerchantBuyResultPayload&)>;
     using MerchantSellResultCallback = std::function<void(const net::MerchantSellResultPayload&)>;
+    using NpcDialogOpenCallback = std::function<void(const net::NpcDialogOpenPayload&)>;
 
     explicit ZoneClient(asio::io_context& io);
 
@@ -70,6 +71,7 @@ public:
     void setMerchantOpenCallback(MerchantOpenCallback callback);
     void setMerchantBuyResultCallback(MerchantBuyResultCallback callback);
     void setMerchantSellResultCallback(MerchantSellResultCallback callback);
+    void setNpcDialogOpenCallback(NpcDialogOpenCallback callback);
 
     const net::InventorySnapshotPayload& inventorySnapshot() const { return inventorySnapshot_; }
 
@@ -104,6 +106,7 @@ private:
     MerchantOpenCallback merchantOpenCallback_;
     MerchantBuyResultCallback merchantBuyResultCallback_;
     MerchantSellResultCallback merchantSellResultCallback_;
+    NpcDialogOpenCallback npcDialogOpenCallback_;
     net::InventorySnapshotPayload inventorySnapshot_;
     std::deque<net::EntitySnapshotPayload> pendingEntitySnapshots_;
 };

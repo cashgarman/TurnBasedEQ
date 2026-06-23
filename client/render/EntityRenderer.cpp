@@ -95,14 +95,21 @@ void EntityRenderer::updateLocalPlayerPosition(int32_t tileX, int32_t tileY)
     mergeLocalPlayer();
 }
 
-void EntityRenderer::setLocalPlayerEquippedWeapon(const std::string& itemId)
+void EntityRenderer::setLocalPlayerEquipment(
+    const std::string& weaponItemId,
+    const std::string& headItemId,
+    const std::string& chestItemId,
+    const std::string& handsItemId)
 {
     if (!hasLocalPlayer_)
     {
         return;
     }
 
-    localPlayer_.equippedWeaponItemId = itemId;
+    localPlayer_.equippedWeaponItemId = weaponItemId;
+    localPlayer_.equippedHeadItemId = headItemId;
+    localPlayer_.equippedChestItemId = chestItemId;
+    localPlayer_.equippedHandsItemId = handsItemId;
     mergeLocalPlayer();
 }
 
@@ -127,6 +134,9 @@ void EntityRenderer::applySnapshot(const net::EntitySnapshotPayload& snapshot)
         visual.classId = entity.classId;
         visual.appearanceId = entity.appearanceId;
         visual.equippedWeaponItemId = entity.equippedWeaponItemId;
+        visual.equippedHeadItemId = entity.equippedHeadItemId;
+        visual.equippedChestItemId = entity.equippedChestItemId;
+        visual.equippedHandsItemId = entity.equippedHandsItemId;
         visual.tileX = entity.tileX;
         visual.tileY = entity.tileY;
         visual.isLocalPlayer = hasLocalPlayer_ && entity.entityId == localPlayer_.entityId;
@@ -158,21 +168,33 @@ SDL_Texture* EntityRenderer::textureForEntity(const EntityVisual& entity, int fr
         entity.classId,
         entity.appearanceId,
         frameIndex,
-        entity.equippedWeaponItemId};
+        entity.equippedWeaponItemId,
+        entity.equippedHeadItemId,
+        entity.equippedChestItemId,
+        entity.equippedHandsItemId};
     const auto it = textures_.find(key);
     if (it != textures_.end())
     {
         return it->second;
     }
 
-    std::string weaponTintHex;
-    if (!entity.equippedWeaponItemId.empty() && itemCatalog_ != nullptr)
+    render::GearLayerTints gearTints;
+    if (itemCatalog_ != nullptr)
     {
-        const content::ItemDef* weapon = itemCatalog_->findItem(entity.equippedWeaponItemId);
-        if (weapon != nullptr && !weapon->spriteTint.empty())
+        const auto tintForItem = [this](const std::string& itemId) -> std::string
         {
-            weaponTintHex = weapon->spriteTint;
-        }
+            if (itemId.empty())
+            {
+                return {};
+            }
+            const content::ItemDef* item = itemCatalog_->findItem(itemId);
+            return (item != nullptr && !item->spriteTint.empty()) ? item->spriteTint : std::string{};
+        };
+
+        gearTints.weapon = tintForItem(entity.equippedWeaponItemId);
+        gearTints.head = tintForItem(entity.equippedHeadItemId);
+        gearTints.chest = tintForItem(entity.equippedChestItemId);
+        gearTints.hands = tintForItem(entity.equippedHandsItemId);
     }
 
     const auto pixels = generator_.generateFrame(
@@ -183,7 +205,7 @@ SDL_Texture* EntityRenderer::textureForEntity(const EntityVisual& entity, int fr
         *style_,
         *catalog_,
         frameIndex,
-        weaponTintHex);
+        gearTints);
 
     SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
         const_cast<uint8_t*>(pixels.data()),

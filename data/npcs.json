@@ -27,5 +27,35 @@
       ],
       "sellItemIds": ["boar_hide", "chief_blade"]
     }
+  },
+  {
+    "id": "starter_city_lorekeeper_1",
+    "name": "Elder Scribe Marn",
+    "aliases": ["lorekeeper_starter_1"],
+    "roles": ["lorekeeper"],
+    "loreLines": [
+      "Long ago, the starter valleys were carved by wandering titans.",
+      "Their footprints became the hunting grounds you see beyond the north gate."
+    ]
+  },
+  {
+    "id": "starter_city_lorekeeper_2",
+    "name": "Historian Vale",
+    "aliases": ["lorekeeper_starter_2"],
+    "roles": ["lorekeeper"],
+    "loreLines": [
+      "Merchants price their wares by your charm and bargaining skill.",
+      "A skilled trader pays less and earns more when selling loot."
+    ]
+  },
+  {
+    "id": "starter_city_lorekeeper_3",
+    "name": "Sage Tilla",
+    "aliases": ["lorekeeper_starter_3"],
+    "roles": ["lorekeeper"],
+    "loreLines": [
+      "Steel alone does not win battles in these lands.",
+      "Press L to inspect your gear — armor tints your sprite head, chest, and hands."
+    ]
   }
 ]

@@ -20,6 +20,7 @@ struct NpcDef
     std::string id;
     std::string name;
     std::vector<std::string> roles;
+    std::vector<std::string> loreLines;
     std::vector<MerchantBuyEntry> merchantBuyStock;
     std::vector<std::string> merchantSellItemIds;
 };

@@ -681,6 +681,15 @@ void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
         }
         break;
     }
+    case net::ClientPacketType::NpcDialogOpen:
+    {
+        net::NpcDialogOpenPayload dialog;
+        if (net::deserializeClientPacket(packet, dialog) && npcDialogOpenCallback_)
+        {
+            npcDialogOpenCallback_(dialog);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -803,6 +812,11 @@ void ZoneClient::setMerchantSellResultCallback(MerchantSellResultCallback callba
     merchantSellResultCallback_ = std::move(callback);
 }
 
+void ZoneClient::setNpcDialogOpenCallback(NpcDialogOpenCallback callback)
+{
+    npcDialogOpenCallback_ = std::move(callback);
+}
+
 bool ZoneClient::equipItem(const std::string& itemId, net::EquipItemResultPayload& outResult)
 {
     net::EquipItemRequestPayload request;
@@ -913,6 +927,21 @@ bool ZoneClient::interactNpc(uint32_t npcEntityId)
         if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::MerchantOpen)
         {
             return true;
+        }
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::NpcDialogOpen)
+        {
+            return true;
+        }
+
+        if (static_cast<net::ClientPacketType>(packet->header.packetType) == net::ClientPacketType::ChatDeliver)
+        {
+            net::ChatDeliverPayload deliver;
+            if (net::deserializeClientPacket(*packet, deliver)
+                && deliver.channel == static_cast<uint8_t>(tbeq::ChatChannel::System))
+            {
+                return true;
+            }
         }
     }
 

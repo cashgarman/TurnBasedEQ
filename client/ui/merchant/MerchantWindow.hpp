@@ -29,6 +29,7 @@ class MerchantWindow
 public:
     void setItemCatalog(const content::ItemCatalog* catalog);
     void applyOpen(const net::MerchantOpenPayload& open);
+    void applyStockUpdate(const net::MerchantBuyResultPayload& result);
     void clear();
     bool hasMerchant() const { return npcEntityId_ != 0; }
     uint32_t npcEntityId() const { return npcEntityId_; }

@@ -4,12 +4,12 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
-#include <thread>
+#include <string>
+#include <vector>
 
 #include "HeadlessClient.hpp"
 #include "TestCluster.hpp"
 #include "tbeq/net/ClientPackets.hpp"
-#include "tbeq/net/DebugCommands.hpp"
 
 namespace
 {
@@ -42,7 +42,7 @@ ZoneSession loginAndEnterZone(
 
     tbeq::net::CreateAccountRequestPayload createAccount;
     createAccount.username = username;
-    createAccount.password = "merchant_pass";
+    createAccount.password = "lore_pass";
     worldClient.sendClientPacket(
         tbeq::net::ClientPacketType::CreateAccountRequest,
         1,
@@ -103,35 +103,9 @@ ZoneSession loginAndEnterZone(
     return session;
 }
 
-std::optional<tbeq::net::InventorySnapshotPayload> waitForInventorySnapshot(
-    tbeq::test::HeadlessClient& zoneClient,
-    std::chrono::milliseconds timeout)
-{
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline)
-    {
-        const auto packet = zoneClient.readClientPacket(std::chrono::milliseconds(300));
-        if (!packet.has_value())
-        {
-            continue;
-        }
-
-        if (static_cast<tbeq::net::ClientPacketType>(packet->header.packetType)
-            == tbeq::net::ClientPacketType::InventorySnapshot)
-        {
-            tbeq::net::InventorySnapshotPayload inventory;
-            if (tbeq::net::deserializeClientPacket(*packet, inventory))
-            {
-                return inventory;
-            }
-        }
-    }
-    return std::nullopt;
-}
-
 } // namespace
 
-TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]")
+TEST_CASE("lorekeeper interact opens npc dialog", "[integration][npc]")
 {
     if (!serverExecutablesExist())
     {
@@ -153,8 +127,8 @@ TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]"
     const ZoneSession session = loginAndEnterZone(
         worldClient,
         cluster,
-        "merchant_user",
-        "MerchantHero",
+        "lore_user",
+        "LoreHero",
         "starter_city",
         zoneClientPort);
     worldClient.close();
@@ -174,14 +148,13 @@ TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]"
     bool gotResume = false;
     int32_t playerTileX = 0;
     int32_t playerTileY = 0;
-    uint32_t merchantNpcEntityId = 0;
-    int32_t merchantTileX = 0;
-    int32_t merchantTileY = 0;
-    std::optional<tbeq::net::InventorySnapshotPayload> initialInventory;
+    uint32_t loreNpcEntityId = 0;
+    int32_t loreTileX = 0;
+    int32_t loreTileY = 0;
     const auto resumeDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
     while (std::chrono::steady_clock::now() < resumeDeadline)
     {
-        if (gotResume && merchantNpcEntityId != 0 && initialInventory.has_value())
+        if (gotResume && loreNpcEntityId != 0)
         {
             break;
         }
@@ -208,34 +181,27 @@ TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]"
             REQUIRE(tbeq::net::deserializeClientPacket(*packet, entities));
             for (const auto& entity : entities.entities)
             {
-                if (entity.entityType != 0 && entity.appearanceId == "merchant")
+                if (entity.entityType != 0 && entity.appearanceId == "lore")
                 {
-                    merchantNpcEntityId = entity.entityId;
-                    merchantTileX = entity.tileX;
-                    merchantTileY = entity.tileY;
+                    loreNpcEntityId = entity.entityId;
+                    loreTileX = entity.tileX;
+                    loreTileY = entity.tileY;
                     break;
                 }
             }
         }
-        else if (type == tbeq::net::ClientPacketType::InventorySnapshot)
-        {
-            tbeq::net::InventorySnapshotPayload inventory;
-            REQUIRE(tbeq::net::deserializeClientPacket(*packet, inventory));
-            initialInventory = std::move(inventory);
-        }
     }
     REQUIRE(gotResume);
-    REQUIRE(initialInventory.has_value());
 
-    if (merchantNpcEntityId == 0)
+    if (loreNpcEntityId == 0)
     {
-        SKIP("No NPC entities found in starter_city snapshot");
+        SKIP("No lorekeeper NPC entities found in starter_city snapshot");
     }
 
     bool moveOk = false;
     for (int step = 0; step < 80; ++step)
     {
-        const int32_t distance = std::abs(playerTileX - merchantTileX) + std::abs(playerTileY - merchantTileY);
+        const int32_t distance = std::abs(playerTileX - loreTileX) + std::abs(playerTileY - loreTileY);
         if (distance <= 1)
         {
             moveOk = true;
@@ -244,30 +210,30 @@ TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]"
 
         int32_t nextX = playerTileX;
         int32_t nextY = playerTileY;
-        if (playerTileX < merchantTileX)
+        if (playerTileX < loreTileX)
         {
             ++nextX;
         }
-        else if (playerTileX > merchantTileX)
+        else if (playerTileX > loreTileX)
         {
             --nextX;
         }
-        else if (playerTileY < merchantTileY)
+        else if (playerTileY < loreTileY)
         {
             ++nextY;
         }
-        else if (playerTileY > merchantTileY)
+        else
         {
             --nextY;
         }
 
-        tbeq::net::MoveIntentPayload moveIntent;
-        moveIntent.targetTileX = nextX;
-        moveIntent.targetTileY = nextY;
+        tbeq::net::MoveIntentPayload move;
+        move.targetTileX = nextX;
+        move.targetTileY = nextY;
         zoneClient.sendClientPacket(
             tbeq::net::ClientPacketType::MoveIntent,
             static_cast<uint32_t>(step + 2),
-            tbeq::net::serialize(moveIntent),
+            tbeq::net::serialize(move),
             session.sessionTokenHash);
 
         const auto moveDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -296,17 +262,16 @@ TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]"
     REQUIRE(moveOk);
 
     tbeq::net::NpcInteractRequestPayload interact;
-    interact.npcEntityId = merchantNpcEntityId;
+    interact.npcEntityId = loreNpcEntityId;
     zoneClient.sendClientPacket(
         tbeq::net::ClientPacketType::NpcInteractRequest,
-        4,
+        100,
         tbeq::net::serialize(interact),
         session.sessionTokenHash);
 
-    bool gotMerchantOpen = false;
-    tbeq::net::MerchantOpenPayload merchantOpen;
-    const auto openDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-    while (!gotMerchantOpen && std::chrono::steady_clock::now() < openDeadline)
+    std::vector<std::string> dialogLines;
+    const auto loreDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (std::chrono::steady_clock::now() < loreDeadline)
     {
         const auto packet = zoneClient.readClientPacket(std::chrono::milliseconds(300));
         if (!packet.has_value())
@@ -315,77 +280,31 @@ TEST_CASE("merchant buy grants item and deducts gold", "[integration][merchant]"
         }
 
         if (static_cast<tbeq::net::ClientPacketType>(packet->header.packetType)
-            == tbeq::net::ClientPacketType::MerchantOpen)
-        {
-            REQUIRE(tbeq::net::deserializeClientPacket(*packet, merchantOpen));
-            gotMerchantOpen = true;
-        }
-    }
-
-    if (!gotMerchantOpen)
-    {
-        FAIL("Could not open merchant after moving adjacent to NPC");
-    }
-
-    REQUIRE(!merchantOpen.stock.empty());
-    const std::string buyItemId = merchantOpen.stock.front().itemId;
-
-    tbeq::net::MerchantBuyRequestPayload buyRequest;
-    buyRequest.npcEntityId = merchantNpcEntityId;
-    buyRequest.itemId = buyItemId;
-    buyRequest.quantity = 1;
-    zoneClient.sendClientPacket(
-        tbeq::net::ClientPacketType::MerchantBuyRequest,
-        5,
-        tbeq::net::serialize(buyRequest),
-        session.sessionTokenHash);
-
-    bool gotBuyResult = false;
-    tbeq::net::MerchantBuyResultPayload buyResult;
-    std::optional<tbeq::net::InventorySnapshotPayload> finalInventory;
-    const auto buyDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-    while (!gotBuyResult && std::chrono::steady_clock::now() < buyDeadline)
-    {
-        const auto packet = zoneClient.readClientPacket(std::chrono::milliseconds(300));
-        if (!packet.has_value())
+            != tbeq::net::ClientPacketType::NpcDialogOpen)
         {
             continue;
         }
 
-        const auto type = static_cast<tbeq::net::ClientPacketType>(packet->header.packetType);
-        if (type == tbeq::net::ClientPacketType::MerchantBuyResult)
-        {
-            REQUIRE(tbeq::net::deserializeClientPacket(*packet, buyResult));
-            gotBuyResult = true;
-        }
-        else if (type == tbeq::net::ClientPacketType::InventorySnapshot)
-        {
-            tbeq::net::InventorySnapshotPayload inventory;
-            REQUIRE(tbeq::net::deserializeClientPacket(*packet, inventory));
-            finalInventory = std::move(inventory);
-        }
+        tbeq::net::NpcDialogOpenPayload dialog;
+        REQUIRE(tbeq::net::deserializeClientPacket(*packet, dialog));
+        REQUIRE(dialog.npcEntityId == loreNpcEntityId);
+        REQUIRE(!dialog.npcName.empty());
+        dialogLines = dialog.lines;
+        break;
     }
 
-    REQUIRE(gotBuyResult);
-    REQUIRE(buyResult.ok);
-    REQUIRE(buyResult.stockUpdated);
-    REQUIRE(buyResult.stockItemId == buyItemId);
-    REQUIRE(buyResult.stockQuantity + 1 == merchantOpen.stock.front().quantity);
-    if (!finalInventory.has_value())
+    REQUIRE(!dialogLines.empty());
+    bool hasLoreContent = false;
+    for (const auto& line : dialogLines)
     {
-        finalInventory = waitForInventorySnapshot(zoneClient, std::chrono::seconds(3));
-    }
-    REQUIRE(finalInventory.has_value());
-    REQUIRE(finalInventory->gold < initialInventory->gold);
-
-    bool hasPurchasedItem = false;
-    for (const auto& entry : finalInventory->items)
-    {
-        if (entry.itemId == buyItemId)
+        if (line.find("titans") != std::string::npos
+            || line.find("Merchant") != std::string::npos
+            || line.find("gear") != std::string::npos
+            || line.find("tales") != std::string::npos)
         {
-            hasPurchasedItem = true;
+            hasLoreContent = true;
             break;
         }
     }
-    REQUIRE(hasPurchasedItem);
+    REQUIRE(hasLoreContent);
 }

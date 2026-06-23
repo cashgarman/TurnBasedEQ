@@ -78,6 +78,7 @@ add_executable(tbeq_tests_integration
     integration/combat_encounter_test.cpp
     integration/ai_party_combat_test.cpp
     integration/merchant_buy_test.cpp
+    integration/lorekeeper_interact_test.cpp
 )
 
 target_link_libraries(tbeq_tests_integration

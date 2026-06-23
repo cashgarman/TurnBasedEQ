@@ -91,6 +91,7 @@ private:
         int32_t tileX = 0;
         int32_t tileY = 0;
         uint32_t entityId = 0;
+        std::unordered_map<std::string, uint16_t> merchantStockRemaining;
     };
 
     struct PendingTransfer
@@ -169,6 +170,11 @@ private:
     bool isNearNpc(const PlayerEntity& player, const NpcEntity& npc) const;
     bool tryEquipItem(PlayerEntity& player, const std::string& itemId, std::string& message);
     bool tryUnequipItem(PlayerEntity& player, const std::string& slot, std::string& message);
+    uint16_t merchantStockQuantity(const NpcEntity& npc, const std::string& itemId, uint16_t catalogQuantity) const;
+    net::MerchantOpenPayload buildMerchantOpenPayload(
+        const NpcEntity& npc,
+        const content::NpcDef& npcDef,
+        const CharacterState& state) const;
 
     asio::io_context& io_;
     AppConfig config_;

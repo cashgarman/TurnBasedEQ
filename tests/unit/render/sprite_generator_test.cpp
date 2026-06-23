@@ -76,6 +76,26 @@ TEST_CASE("sprite generator walk bob alternates frames", "[render][sprite]")
     REQUIRE(tbeq::render::hashPixels(frame0) != tbeq::render::hashPixels(frame1));
 }
 
+TEST_CASE("sprite generator gear layers change appearance", "[render][sprite]")
+{
+    tbeq::render::TileStyleCatalog styleCatalog;
+    tbeq::render::EntitySpriteCatalog spriteCatalog;
+    REQUIRE(styleCatalog.loadFromFile(std::filesystem::path(TBEQ_DATA_ROOT) / "tile_styles.json"));
+    REQUIRE(spriteCatalog.loadFromFile(std::filesystem::path(TBEQ_DATA_ROOT) / "entity_sprites.json"));
+    const auto* style = styleCatalog.find("starter_city");
+    REQUIRE(style != nullptr);
+
+    tbeq::render::SpriteGenerator generator;
+    const auto bare = generator.generateFrame(0, "human", "warrior", "", *style, spriteCatalog, 0);
+    tbeq::render::GearLayerTints gear;
+    gear.weapon = "#c0a060";
+    gear.head = "#6b4f2a";
+    gear.chest = "#4a6b8a";
+    gear.hands = "#808080";
+    const auto geared = generator.generateFrame(0, "human", "warrior", "", *style, spriteCatalog, 0, gear);
+    REQUIRE(tbeq::render::hashPixels(bare) != tbeq::render::hashPixels(geared));
+}
+
 TEST_CASE("entity sprite catalog loads from json", "[render][sprite]")
 {
     tbeq::render::EntitySpriteCatalog catalog;

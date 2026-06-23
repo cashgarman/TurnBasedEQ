@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include <algorithm>
 #include <spdlog/spdlog.h>
 
 #include "tbeq/content/ItemCatalog.hpp"
@@ -23,7 +24,62 @@ int32_t manhattanDistance(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
     return std::abs(x0 - x1) + std::abs(y0 - y1);
 }
 
+bool npcHasRole(const content::NpcDef& npcDef, const std::string& role)
+{
+    return std::find(npcDef.roles.begin(), npcDef.roles.end(), role) != npcDef.roles.end();
+}
+
 } // namespace
+
+uint16_t ZoneServer::merchantStockQuantity(
+    const NpcEntity& npc,
+    const std::string& itemId,
+    uint16_t catalogQuantity) const
+{
+    const auto it = npc.merchantStockRemaining.find(itemId);
+    if (it != npc.merchantStockRemaining.end())
+    {
+        return it->second;
+    }
+    return catalogQuantity;
+}
+
+net::MerchantOpenPayload ZoneServer::buildMerchantOpenPayload(
+    const NpcEntity& npc,
+    const content::NpcDef& npcDef,
+    const CharacterState& characterState) const
+{
+    net::MerchantOpenPayload openPayload;
+    openPayload.npcEntityId = npc.entityId;
+    openPayload.npcName = npcDef.name;
+    openPayload.sellItemIds = npcDef.merchantSellItemIds;
+
+    const uint16_t merchantSkill = characterState.skillLevel("merchant");
+    for (const auto& buyEntry : npcDef.merchantBuyStock)
+    {
+        const content::ItemDef* item = itemCatalog_.findItem(buyEntry.itemId);
+        if (item == nullptr)
+        {
+            continue;
+        }
+
+        net::MerchantStockEntryPayload stockEntry;
+        stockEntry.itemId = buyEntry.itemId;
+        stockEntry.quantity = merchantStockQuantity(npc, buyEntry.itemId, buyEntry.quantity);
+        stockEntry.buyPrice = items::ItemRules::merchantBuyPrice(
+            *item,
+            merchantSkill,
+            characterState.cha,
+            buyEntry.price);
+        stockEntry.sellPrice = items::ItemRules::merchantSellPrice(
+            *item,
+            merchantSkill,
+            characterState.cha);
+        openPayload.stock.push_back(std::move(stockEntry));
+    }
+
+    return openPayload;
+}
 
 net::InventorySnapshotPayload ZoneServer::buildInventorySnapshot(const CharacterState& state) const
 {
@@ -289,41 +345,38 @@ void ZoneServer::handleNpcInteract(
         return;
     }
 
-    const bool isMerchant = std::find(npcDef->roles.begin(), npcDef->roles.end(), "merchant") != npcDef->roles.end();
-    if (!isMerchant)
+    const bool isLorekeeper = npcHasRole(*npcDef, "lorekeeper");
+    const bool isMerchant = npcHasRole(*npcDef, "merchant");
+    if (isLorekeeper)
     {
-        deliverSystemMessage(*player, npcDef->name + " has nothing to trade right now.");
+        net::NpcDialogOpenPayload dialogPayload;
+        dialogPayload.npcEntityId = npc->entityId;
+        dialogPayload.npcName = npcDef->name;
+        if (npcDef->loreLines.empty())
+        {
+            dialogPayload.lines.push_back(npcDef->name + " has no tales to share yet.");
+        }
+        else
+        {
+            dialogPayload.lines = npcDef->loreLines;
+        }
+
+        sendClientPacket(
+            connection,
+            net::ClientPacketType::NpcDialogOpen,
+            packet.header.sequenceId,
+            net::serialize(dialogPayload),
+            packet.header.sessionTokenHash);
         return;
     }
 
-    net::MerchantOpenPayload openPayload;
-    openPayload.npcEntityId = npc->entityId;
-    openPayload.npcName = npcDef->name;
-    openPayload.sellItemIds = npcDef->merchantSellItemIds;
-
-    const uint16_t merchantSkill = player->characterState.skillLevel("merchant");
-    for (const auto& buyEntry : npcDef->merchantBuyStock)
+    if (!isMerchant)
     {
-        const content::ItemDef* item = itemCatalog_.findItem(buyEntry.itemId);
-        if (item == nullptr)
-        {
-            continue;
-        }
-
-        net::MerchantStockEntryPayload stockEntry;
-        stockEntry.itemId = buyEntry.itemId;
-        stockEntry.quantity = buyEntry.quantity;
-        stockEntry.buyPrice = items::ItemRules::merchantBuyPrice(
-            *item,
-            merchantSkill,
-            player->characterState.cha,
-            buyEntry.price);
-        stockEntry.sellPrice = items::ItemRules::merchantSellPrice(
-            *item,
-            merchantSkill,
-            player->characterState.cha);
-        openPayload.stock.push_back(std::move(stockEntry));
+        deliverSystemMessage(*player, npcDef->name + " has nothing to offer right now.");
+        return;
     }
+
+    const auto openPayload = buildMerchantOpenPayload(*npc, *npcDef, player->characterState);
 
     sendClientPacket(
         connection,
@@ -393,12 +446,26 @@ void ZoneServer::handleMerchantBuy(
                 player->characterState.cha,
                 stockEntry->price);
             const uint32_t totalPrice = unitPrice * request.quantity;
-            if (player->characterState.gold < totalPrice)
+            const uint16_t available = merchantStockQuantity(*npc, request.itemId, stockEntry->quantity);
+            if (available < request.quantity)
+            {
+                result.message = "Merchant is out of stock.";
+            }
+            else if (player->characterState.gold < totalPrice)
             {
                 result.message = "Not enough gold.";
             }
             else
             {
+                auto stockIt = npc->merchantStockRemaining.find(request.itemId);
+                if (stockIt != npc->merchantStockRemaining.end())
+                {
+                    stockIt->second = static_cast<uint16_t>(stockIt->second - request.quantity);
+                    result.stockUpdated = true;
+                    result.stockItemId = request.itemId;
+                    result.stockQuantity = stockIt->second;
+                }
+
                 player->characterState.gold -= totalPrice;
                 player->characterState.addItem(request.itemId, request.quantity);
                 persistPlayerState(player->characterId, player->characterState);

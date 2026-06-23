@@ -253,7 +253,7 @@ std::vector<uint8_t> SpriteGenerator::generateFrame(
     const TileStyleProfile& style,
     const EntitySpriteCatalog& catalog,
     int frameIndex,
-    const std::string& weaponTintHex) const
+    const GearLayerTints& gearTints) const
 {
     const Rgba base = parseHexColor(style.baseColor);
     const Rgba accent = parseHexColor(style.accentColor);
@@ -326,11 +326,33 @@ std::vector<uint8_t> SpriteGenerator::generateFrame(
             if (head)
             {
                 color = skin;
+                if (!gearTints.head.empty())
+                {
+                    color = lerpColor(skin, parseHexColor(gearTints.head), 0.72f);
+                }
                 color.a = 255;
             }
-            else if (body || leftArm || rightArm || leftLeg || rightLeg)
+            else if (body)
             {
-                color = (leftArm || rightArm) ? lerpColor(garment, highlight, 0.15f) : garment;
+                color = garment;
+                if (!gearTints.chest.empty())
+                {
+                    color = lerpColor(garment, parseHexColor(gearTints.chest), 0.65f);
+                }
+                color.a = 255;
+            }
+            else if (leftArm || rightArm)
+            {
+                color = lerpColor(garment, highlight, 0.15f);
+                if (!gearTints.hands.empty())
+                {
+                    color = lerpColor(color, parseHexColor(gearTints.hands), 0.70f);
+                }
+                color.a = 255;
+            }
+            else if (leftLeg || rightLeg)
+            {
+                color = garment;
                 color.a = 255;
             }
             else if (feetShadow)
@@ -357,9 +379,9 @@ std::vector<uint8_t> SpriteGenerator::generateFrame(
         }
     }
 
-    if (!weaponTintHex.empty() && entityType == 0)
+    if (!gearTints.weapon.empty() && entityType == 0)
     {
-        const Rgba weaponColor = parseHexColor(weaponTintHex);
+        const Rgba weaponColor = parseHexColor(gearTints.weapon);
         const int weaponLeft = bodyRight + 2;
         const int weaponRight = bodyRight + 5;
         const int weaponTop = armTop;

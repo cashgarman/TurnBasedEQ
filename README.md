@@ -45,6 +45,17 @@ Includes unit tests, integration tests, and CTest target `content_validation`.
 - **Debug cheats** — Spawn AI Cleric, Fill mana, Unlock all spells (`F1` → Cheats tab)
 - **Meditate** — out-of-combat mana regen via server (future client bind; server handles `MeditateRequest`)
 
+### Phase 5 — Items, inventory, look, merchants
+
+- **Equipment** — weapon, head, chest, hands slots with stat aggregation and class restrictions
+- **Inventory UI** — `I` toggles draggable inventory window; equip/unequip via server packets
+- **Look UI** — `L` toggles character inspect panel with equipped gear icons and stat bonuses
+- **Procedural look** — head, chest, hands, and weapon tints applied to player sprites
+- **Merchants** — gold-outlined NPCs in Starter City; `N` to interact; buy/sell with Merchant skill pricing
+- **Merchant stock** — buy stock depletes per NPC until restock (zone restart)
+- **Lorekeepers** — blue-outlined NPCs share lore lines via system chat on interact
+- **Debug menu** — hidden by default in Debug builds; bottom-right `F1: Debug Menu` hint
+
 ## Run local server cluster
 
 ```powershell
@@ -65,8 +76,9 @@ From the repo root (so `config/ui_layout.json` resolves correctly):
 
 - **HUD** and **Chat** shell windows are draggable and resizable
 - Layout persists to `config/ui_layout.json` on exit
-- **F1** toggles the debug menu (Debug builds) with a live spdlog log viewer
+- **F1** toggles the debug menu (Debug builds, hidden by default) with a live spdlog log viewer
 - **Phase 3.5** — procedural entity sprites on the tilemap (players, other clients, zone NPCs)
+- **Phase 5** — `I` inventory, `L` look/inspect, `N` NPC interact, merchant and lorekeeper NPCs
 
 ## Project layout
 

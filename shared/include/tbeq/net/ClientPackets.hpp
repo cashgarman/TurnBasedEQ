@@ -133,6 +133,9 @@ struct EntityStatePayload
     std::string classId;
     std::string appearanceId;
     std::string equippedWeaponItemId;
+    std::string equippedHeadItemId;
+    std::string equippedChestItemId;
+    std::string equippedHandsItemId;
 };
 
 struct EntitySnapshotPayload
@@ -357,6 +360,9 @@ struct MerchantBuyResultPayload
 {
     bool ok = false;
     std::string message;
+    bool stockUpdated = false;
+    std::string stockItemId;
+    uint16_t stockQuantity = 0;
 };
 
 struct MerchantSellRequestPayload
@@ -370,6 +376,13 @@ struct MerchantSellResultPayload
 {
     bool ok = false;
     std::string message;
+};
+
+struct NpcDialogOpenPayload
+{
+    uint32_t npcEntityId = 0;
+    std::string npcName;
+    std::vector<std::string> lines;
 };
 
 struct ZoneRegisterPayload

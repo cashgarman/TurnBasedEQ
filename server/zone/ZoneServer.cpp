@@ -176,6 +176,16 @@ void ZoneServer::spawnNpcEntities()
         npc.tileX = slot.tileX;
         npc.tileY = slot.tileY;
         npc.entityId = allocateEntityId();
+
+        const content::NpcDef* npcDef = npcCatalog_.findNpc(npc.npcId);
+        if (npcDef != nullptr)
+        {
+            for (const auto& buyEntry : npcDef->merchantBuyStock)
+            {
+                npc.merchantStockRemaining[buyEntry.itemId] = buyEntry.quantity;
+            }
+        }
+
         npcs_.push_back(std::move(npc));
     }
 }
@@ -352,6 +362,9 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         entity.raceId = player.raceId;
         entity.classId = player.classId;
         entity.equippedWeaponItemId = player.characterState.equippedItemInSlot("weapon");
+        entity.equippedHeadItemId = player.characterState.equippedItemInSlot("head");
+        entity.equippedChestItemId = player.characterState.equippedItemInSlot("chest");
+        entity.equippedHandsItemId = player.characterState.equippedItemInSlot("hands");
         snapshot.entities.push_back(std::move(entity));
     }
 

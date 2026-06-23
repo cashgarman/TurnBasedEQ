@@ -47,6 +47,14 @@ private:
     std::string defaultNpcRole_ = "quest";
 };
 
+struct GearLayerTints
+{
+    std::string weapon;
+    std::string head;
+    std::string chest;
+    std::string hands;
+};
+
 class SpriteGenerator
 {
 public:
@@ -60,7 +68,7 @@ public:
         const TileStyleProfile& style,
         const EntitySpriteCatalog& catalog,
         int frameIndex,
-        const std::string& weaponTintHex = "") const;
+        const GearLayerTints& gearTints = {}) const;
 };
 
 } // namespace tbeq::render
