@@ -37,7 +37,13 @@ Release builds disable the client debug menu by default (`TBEQ_ENABLE_DEBUG_MENU
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Includes unit tests, integration test `cluster_registers`, and CTest target `content_validation`.
+Includes unit tests, integration tests, and CTest target `content_validation`.
+
+### Phase 4 (dev mode)
+
+- **Combat UI** — class ability bar (Warrior Bash/Kick, Cleric heal, Wizard nuke, Rogue backstab) plus mana display
+- **Debug cheats** — Spawn AI Cleric, Fill mana, Unlock all spells (`F1` → Cheats tab)
+- **Meditate** — out-of-combat mana regen via server (future client bind; server handles `MeditateRequest`)
 
 ## Run local server cluster
 

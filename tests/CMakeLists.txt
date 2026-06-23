@@ -38,6 +38,8 @@ add_executable(tbeq_tests_unit
     unit/shared/combat_initiative_test.cpp
     unit/shared/combat_hit_miss_test.cpp
     unit/shared/combat_flee_test.cpp
+    unit/shared/spell_combat_test.cpp
+    unit/ai/class_combat_brain_test.cpp
 )
 
 target_link_libraries(tbeq_tests_unit
@@ -71,6 +73,7 @@ add_executable(tbeq_tests_integration
     integration/login_and_handoff_test.cpp
     integration/two_players_and_portal_test.cpp
     integration/combat_encounter_test.cpp
+    integration/ai_party_combat_test.cpp
 )
 
 target_link_libraries(tbeq_tests_integration

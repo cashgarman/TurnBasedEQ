@@ -11,8 +11,13 @@
 
 #include <asio.hpp>
 
+#include "tbeq/ai/ClassCombatBrain.hpp"
+#include "tbeq/ai/ClassCombatProfile.hpp"
+#include "tbeq/ai/PartyMemberAI.hpp"
 #include "tbeq/combat/CombatInstance.hpp"
+#include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
+#include "tbeq/content/SpellCatalog.hpp"
 #include "tbeq/core/CharacterState.hpp"
 #include "tbeq/net/ClientPackets.hpp"
 #include "tbeq/net/PacketSerializer.hpp"
@@ -34,9 +39,11 @@ public:
         bool* inCombat = nullptr;
         uint32_t* combatId = nullptr;
         uint32_t* combatSlot = nullptr;
+        bool isAiCompanion = false;
     };
 
     using FindPlayerFn = std::function<PlayerView*(const std::string& characterId)>;
+    using FindAiCompanionsFn = std::function<std::vector<PlayerView>(const std::string& leaderCharacterId)>;
     using BroadcastFn = std::function<void(const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer)>;
     using PersistStateFn = std::function<void(const std::string& characterId, const CharacterState& state)>;
 
@@ -44,16 +51,25 @@ public:
         asio::io_context& io,
         SkillResolver& skillResolver,
         const content::MobCatalog& mobCatalog,
+        const content::SpellCatalog& spellCatalog,
+        const content::AbilityCatalog& abilityCatalog,
+        const ai::ClassCombatProfileCatalog& aiProfiles,
         FindPlayerFn findPlayer,
+        FindAiCompanionsFn findAiCompanions,
         BroadcastFn broadcast,
         PersistStateFn persistState);
 
     bool tryStartSpawnCombat(PlayerView& player, const std::string& mobTable);
     bool startDebugCombat(PlayerView& player, const std::vector<std::string>& mobIds);
-    bool submitAction(const std::string& characterId, const net::SubmitActionPayload& request, net::SubmitActionResultPayload& result);
+    bool submitAction(
+        const std::string& characterId,
+        const net::SubmitActionPayload& request,
+        net::SubmitActionResultPayload& result);
     bool forceEndCombat(const std::string& characterId, combat::CombatOutcome outcome);
     bool killTargetInCombat(const std::string& characterId, uint32_t targetSlot);
     void setGodMode(const std::string& characterId, bool enabled);
+    void fillMana(const std::string& characterId);
+    void unlockAllSpells(const std::string& characterId);
 
     bool isInCombat(const std::string& characterId) const;
 
@@ -76,21 +92,30 @@ private:
     void syncPlayerFromParticipant(const combat::CombatParticipant& participant, PlayerView& player);
     void applySkillXp(PlayerView& player, bool hit);
     void grantLoot(PlayerView& player, const std::vector<combat::CombatLootRoll>& loot);
+    void addPlayerToCombat(ActiveCombat& combat, PlayerView& player, bool playerControlled, bool aiCompanion);
+    void addAiCompanionsToCombat(ActiveCombat& combat, const std::string& leaderCharacterId);
 
     ActiveCombat* findCombatForCharacter(const std::string& characterId);
     const ActiveCombat* findCombatForCharacter(const std::string& characterId) const;
     void broadcastCombatStart(ActiveCombat& combat);
     void broadcastUpdate(ActiveCombat& combat);
     void broadcastEvents(ActiveCombat& combat, const std::vector<combat::CombatEvent>& events);
+    void syncAllParticipants(ActiveCombat& combat);
     void beginTurn(ActiveCombat& combat);
     void resolveEnemyTurn(ActiveCombat& combat);
+    void resolveAiCompanionTurn(ActiveCombat& combat);
     void onTurnTimeout(uint32_t combatId, uint32_t actorSlot);
     void finishCombat(ActiveCombat& combat);
 
     asio::io_context& io_;
     SkillResolver& skillResolver_;
     const content::MobCatalog& mobCatalog_;
+    const content::SpellCatalog& spellCatalog_;
+    const content::AbilityCatalog& abilityCatalog_;
+    ai::ClassCombatBrain classCombatBrain_;
+    ai::PartyMemberAI partyMemberAi_;
     FindPlayerFn findPlayer_;
+    FindAiCompanionsFn findAiCompanions_;
     BroadcastFn broadcast_;
     PersistStateFn persistState_;
     combat::CombatInstance::Rng rng_;

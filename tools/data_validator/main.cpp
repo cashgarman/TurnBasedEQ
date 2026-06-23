@@ -87,6 +87,26 @@ int main(int argc, char** argv)
 
     ok &= validateArrayFile(dataRoot / "races.json", {"id", "name", "allowedClasses", "startZone"});
     ok &= validateArrayFile(dataRoot / "classes.json", {"id", "name"});
+    ok &= validateArrayFile(dataRoot / "spells.json", {"id", "name", "classId", "manaCost", "school", "targetType", "effect", "baseValue"});
+    ok &= validateArrayFile(dataRoot / "abilities.json", {"id", "name", "classId", "targetType", "effect", "baseValue"});
+    {
+        std::ifstream aiInput(dataRoot / "ai/class_combat_profiles.json");
+        if (!aiInput)
+        {
+            std::cerr << "Failed to open ai/class_combat_profiles.json\n";
+            ok = false;
+        }
+        else
+        {
+            nlohmann::json aiRoot;
+            aiInput >> aiRoot;
+            if (!aiRoot.is_object() || aiRoot.empty())
+            {
+                std::cerr << "ai/class_combat_profiles.json must be a non-empty object\n";
+                ok = false;
+            }
+        }
+    }
     ok &= validateArrayFile(dataRoot / "tile_defs.json", {"id", "category", "collision"});
     ok &= validateArrayFile(dataRoot / "tile_styles.json", {"id", "masterSeed", "palette"});
     ok &= validateObjectFile(dataRoot / "entity_sprites.json", {"races", "classes", "npcRoles", "defaults"});

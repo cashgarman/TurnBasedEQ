@@ -32,6 +32,8 @@ struct TestPreset
 constexpr TestPreset kPresets[] =
 {
     {"All unit tests", ""},
+    {"Combat / spells", "[combat][spells]"},
+    {"AI combat brain", "[ai]"},
     {"UI layout", "[ui]"},
     {"Auth", "[auth]"},
     {"Network packets", "[net]"},
@@ -133,23 +135,27 @@ bool runProcessCaptureOutput(
         commandLine << ' ' << quoteArg(filter);
     }
 
-    std::string command = commandLine.str();
+    const std::string command = commandLine.str();
+
     const std::filesystem::path workingDirectory =
 #ifdef TBEQ_REPO_ROOT
         std::filesystem::path(TBEQ_REPO_ROOT);
 #else
         executable.parent_path();
 #endif
+    const std::string workingDirectoryStr = workingDirectory.string();
 
+    // CreateProcess may modify the command line buffer in place.
+    std::string mutableCommand = command;
     const BOOL created = CreateProcessA(
         nullptr,
-        command.data(),
+        mutableCommand.data(),
         nullptr,
         nullptr,
         TRUE,
         CREATE_NO_WINDOW,
         nullptr,
-        workingDirectory.string().c_str(),
+        workingDirectoryStr.c_str(),
         &startupInfo,
         &processInfo);
 
@@ -307,7 +313,8 @@ void UnitTestRunner::draw()
         return;
     }
 
-    ImGui::TextDisabled("%s", testExePath_.string().c_str());
+    const std::string testExePathDisplay = testExePath_.string();
+    ImGui::TextDisabled("%s", testExePathDisplay.c_str());
 
     const int presetCount = static_cast<int>(std::size(kPresets));
     if (ImGui::Combo("Test suite", &selectedPreset_, [](void* data, int index)

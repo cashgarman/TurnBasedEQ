@@ -76,6 +76,74 @@ bool SkillResolver::rollFlee(
     return dist(rng) <= fleeChance;
 }
 
+bool SkillResolver::rollChanneling(uint16_t channelingSkill, std::mt19937& rng) const
+{
+    int32_t successChance = 40 + static_cast<int32_t>(channelingSkill) / 2;
+    successChance = std::clamp(successChance, 15, 98);
+
+    std::uniform_int_distribution<int32_t> dist(1, 100);
+    return dist(rng) <= successChance;
+}
+
+bool SkillResolver::rollSpellResist(
+    uint16_t casterSchoolSkill,
+    uint16_t targetLevel,
+    std::mt19937& rng) const
+{
+    int32_t resistChance = 20 + static_cast<int32_t>(targetLevel) * 2
+        - static_cast<int32_t>(casterSchoolSkill) / 3;
+    resistChance = std::clamp(resistChance, 5, 75);
+
+    std::uniform_int_distribution<int32_t> dist(1, 100);
+    return dist(rng) <= resistChance;
+}
+
+bool SkillResolver::rollManeuver(
+    uint16_t maneuverSkill,
+    uint16_t targetLevel,
+    std::mt19937& rng) const
+{
+    int32_t successChance = 35 + static_cast<int32_t>(maneuverSkill) / 2
+        - static_cast<int32_t>(targetLevel);
+    successChance = std::clamp(successChance, 10, 90);
+
+    std::uniform_int_distribution<int32_t> dist(1, 100);
+    return dist(rng) <= successChance;
+}
+
+int32_t SkillResolver::calculateSpellDamage(
+    int32_t baseValue,
+    uint16_t schoolSkill,
+    uint16_t casterLevel) const
+{
+    return baseValue + static_cast<int32_t>(schoolSkill) / 5 + static_cast<int32_t>(casterLevel) / 2;
+}
+
+int32_t SkillResolver::calculateHealAmount(
+    int32_t baseValue,
+    uint16_t schoolSkill,
+    uint16_t casterLevel) const
+{
+    return baseValue + static_cast<int32_t>(schoolSkill) / 4 + static_cast<int32_t>(casterLevel);
+}
+
+int32_t SkillResolver::calculateAbilityDamage(
+    int32_t baseValue,
+    uint16_t linkedSkillLevel,
+    uint16_t offenseSkill,
+    uint16_t attackerLevel) const
+{
+    return baseValue + static_cast<int32_t>(linkedSkillLevel) / 4
+        + static_cast<int32_t>(offenseSkill) / 8
+        + static_cast<int32_t>(attackerLevel) / 2;
+}
+
+uint16_t SkillResolver::meditateManaGain(uint16_t meditateSkill, uint16_t maxMana) const
+{
+    const uint16_t baseGain = static_cast<uint16_t>(5 + meditateSkill / 10);
+    return std::min(maxMana, baseGain);
+}
+
 uint32_t SkillResolver::combatSkillXpGain(bool hit) const
 {
     return hit ? 8u : 4u;

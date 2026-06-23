@@ -39,6 +39,8 @@ enum class ClientPacketType : uint16_t
     SubmitActionResult = 55,
     CharacterVitals = 56,
     SkillGain = 57,
+    MeditateRequest = 58,
+    MeditateResult = 59,
     DebugCommandRequest = 100,
     DebugCommandResponse = 101,
 };

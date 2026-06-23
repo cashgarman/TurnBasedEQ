@@ -51,6 +51,24 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         throw std::runtime_error("Failed to load mobs.json");
     }
 
+    const auto spellsPath = std::filesystem::path(config.dataRoot) / "spells.json";
+    if (!spellCatalog_.loadFromFile(spellsPath))
+    {
+        throw std::runtime_error("Failed to load spells.json");
+    }
+
+    const auto abilitiesPath = std::filesystem::path(config.dataRoot) / "abilities.json";
+    if (!abilityCatalog_.loadFromFile(abilitiesPath))
+    {
+        throw std::runtime_error("Failed to load abilities.json");
+    }
+
+    const auto aiProfilesPath = std::filesystem::path(config.dataRoot) / "ai" / "class_combat_profiles.json";
+    if (!aiProfiles_.loadFromFile(aiProfilesPath))
+    {
+        throw std::runtime_error("Failed to load class_combat_profiles.json");
+    }
+
     if (!loadZoneData())
     {
         throw std::runtime_error("Failed to load zone data from database");
@@ -63,15 +81,26 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         io_,
         skillResolver_,
         mobCatalog_,
+        spellCatalog_,
+        abilityCatalog_,
+        aiProfiles_,
         [this](const std::string& characterId) -> CombatManager::PlayerView*
         {
-            PlayerEntity* player = findPlayerByCharacterId(characterId);
-            if (player == nullptr)
+            if (PlayerEntity* player = findPlayerByCharacterId(characterId))
             {
-                return nullptr;
+                combatViewScratch_ = makePlayerView(*player);
+                return &combatViewScratch_;
             }
-            combatViewScratch_ = makePlayerView(*player);
-            return &combatViewScratch_;
+            if (AiPartyMember* ai = findAiByCharacterId(characterId))
+            {
+                combatViewScratch_ = makeAiView(*ai);
+                return &combatViewScratch_;
+            }
+            return nullptr;
+        },
+        [this](const std::string& leaderCharacterId)
+        {
+            return findAiCompanionsForLeader(leaderCharacterId);
         },
         [this](const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer)
         {
@@ -304,6 +333,23 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         snapshot.entities.push_back(std::move(entity));
     }
 
+    for (const auto& [_, ai] : aiCompanions_)
+    {
+        if (ai.entityId == excludeEntityId)
+        {
+            continue;
+        }
+        net::EntityStatePayload entity;
+        entity.entityId = ai.entityId;
+        entity.name = ai.name;
+        entity.entityType = 0;
+        entity.tileX = ai.tileX;
+        entity.tileY = ai.tileY;
+        entity.classId = ai.classId;
+        entity.appearanceId = "ai_companion";
+        snapshot.entities.push_back(std::move(entity));
+    }
+
     return snapshot;
 }
 
@@ -449,6 +495,10 @@ void ZoneServer::handleWorldPacket(
             {
                 player.characterState = CharacterState::createDefault(player.classId, player.level);
             }
+            if (player.characterState.classId.empty())
+            {
+                player.characterState.classId = player.classId;
+            }
             player.tileX = static_cast<int32_t>(std::lround(loadResponse.posX));
             player.tileY = static_cast<int32_t>(std::lround(loadResponse.posY));
             player.entityId = allocateEntityId();
@@ -552,6 +602,9 @@ void ZoneServer::handleClientPacket(
         break;
     case net::ClientPacketType::SubmitAction:
         handleSubmitAction(connection, packet);
+        break;
+    case net::ClientPacketType::MeditateRequest:
+        handleMeditate(connection, packet);
         break;
     case net::ClientPacketType::DebugCommandRequest:
         handleDebugCommand(connection, packet);
@@ -714,12 +767,20 @@ void ZoneServer::handleMoveIntent(
         net::serialize(result),
         packet.header.sessionTokenHash);
 
-    if (result.ok)
-    {
-        tryAggro(*player);
-        broadcastEntitySnapshot();
+        if (result.ok)
+        {
+            tryAggro(*player);
+            for (auto& [_, ai] : aiCompanions_)
+            {
+                if (ai.leaderCharacterId == player->characterId)
+                {
+                    ai.tileX = player->tileX;
+                    ai.tileY = player->tileY;
+                }
+            }
+            broadcastEntitySnapshot();
+        }
     }
-}
 
 CombatManager::PlayerView ZoneServer::makePlayerView(PlayerEntity& player)
 {
@@ -732,7 +793,89 @@ CombatManager::PlayerView ZoneServer::makePlayerView(PlayerEntity& player)
     view.inCombat = &player.inCombat;
     view.combatId = &player.combatId;
     view.combatSlot = &player.combatSlot;
+    view.isAiCompanion = false;
     return view;
+}
+
+CombatManager::PlayerView ZoneServer::makeAiView(AiPartyMember& ai)
+{
+    CombatManager::PlayerView view;
+    view.characterId = ai.characterId;
+    view.name = ai.name;
+    view.classId = ai.classId;
+    view.level = ai.level;
+    view.state = &ai.characterState;
+    view.inCombat = &ai.inCombat;
+    view.combatId = &ai.combatId;
+    view.combatSlot = &ai.combatSlot;
+    view.isAiCompanion = true;
+    return view;
+}
+
+std::vector<CombatManager::PlayerView> ZoneServer::findAiCompanionsForLeader(const std::string& leaderCharacterId)
+{
+    std::vector<CombatManager::PlayerView> views;
+    for (auto& [_, ai] : aiCompanions_)
+    {
+        if (ai.leaderCharacterId != leaderCharacterId)
+        {
+            continue;
+        }
+        views.push_back(makeAiView(ai));
+    }
+    return views;
+}
+
+ZoneServer::AiPartyMember* ZoneServer::findAiByCharacterId(const std::string& characterId)
+{
+    const auto it = aiCompanions_.find(characterId);
+    if (it == aiCompanions_.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+bool ZoneServer::spawnAiCompanion(
+    PlayerEntity& leader,
+    const std::string& classId,
+    uint16_t level,
+    std::string& outMessage)
+{
+    const std::string resolvedClass = classId.empty() ? "cleric" : classId;
+    const uint16_t resolvedLevel = level == 0 ? leader.level : level;
+
+    AiPartyMember ai;
+    ai.characterId = "ai_" + std::to_string(nextAiId_++);
+    ai.classId = resolvedClass;
+    ai.level = resolvedLevel;
+    ai.characterState = CharacterState::createDefault(resolvedClass, resolvedLevel);
+    ai.characterState.classId = resolvedClass;
+    ai.characterState.level = resolvedLevel;
+    ai.leaderCharacterId = leader.characterId;
+    ai.entityId = allocateEntityId();
+    ai.tileX = leader.tileX;
+    ai.tileY = leader.tileY;
+    ai.name = resolvedClass.substr(0, 1) == "c" ? "Cleric Companion" : resolvedClass + " Companion";
+    if (resolvedClass == "cleric")
+    {
+        ai.name = "Cleric Companion";
+    }
+
+    const std::string aiId = ai.characterId;
+    const std::string aiName = ai.name;
+    aiCompanions_.emplace(aiId, std::move(ai));
+    outMessage = "Spawned AI companion: " + aiName;
+    broadcastEntitySnapshot();
+    return true;
+}
+
+void ZoneServer::persistPlayerState(const std::string& characterId, const CharacterState& state)
+{
+    if (findPlayerByCharacterId(characterId) != nullptr)
+    {
+        database_.updateCharacterState(characterId, state.toJson());
+    }
 }
 
 void ZoneServer::broadcastToPlayers(
@@ -758,11 +901,6 @@ void ZoneServer::broadcastToPlayers(
     {
         sendClientPacket(connection, type, 0, writer, sessionTokenHash);
     }
-}
-
-void ZoneServer::persistPlayerState(const std::string& characterId, const CharacterState& state)
-{
-    database_.updateCharacterState(characterId, state.toJson());
 }
 
 void ZoneServer::tryAggro(PlayerEntity& player)
@@ -832,6 +970,48 @@ void ZoneServer::handleSubmitAction(
     sendClientPacket(
         connection,
         net::ClientPacketType::SubmitActionResult,
+        packet.header.sequenceId,
+        net::serialize(result),
+        packet.header.sessionTokenHash);
+}
+
+void ZoneServer::handleMeditate(
+    const std::shared_ptr<TcpConnection>& connection,
+    const net::SerializedPacket& packet)
+{
+    net::MeditateResultPayload result;
+    PlayerEntity* player = findPlayerByConnection(connection);
+    if (player == nullptr)
+    {
+        result.message = "Not in zone";
+    }
+    else if (player->inCombat)
+    {
+        result.message = "Cannot meditate in combat";
+    }
+    else if (player->characterState.maxMana == 0)
+    {
+        result.message = "You have no mana to restore";
+    }
+    else
+    {
+        const uint16_t meditateSkill = player->characterState.skillLevel("meditate");
+        const uint16_t gain = skillResolver_.meditateManaGain(meditateSkill, player->characterState.maxMana);
+        const uint16_t before = player->characterState.mana;
+        player->characterState.mana = static_cast<uint16_t>(std::min(
+            static_cast<uint32_t>(player->characterState.maxMana),
+            static_cast<uint32_t>(player->characterState.mana) + gain));
+        result.ok = true;
+        result.manaGained = static_cast<uint16_t>(player->characterState.mana - before);
+        result.mana = player->characterState.mana;
+        result.maxMana = player->characterState.maxMana;
+        result.message = "You meditate and recover " + std::to_string(result.manaGained) + " mana.";
+        persistPlayerState(player->characterId, player->characterState);
+    }
+
+    sendClientPacket(
+        connection,
+        net::ClientPacketType::MeditateResult,
         packet.header.sequenceId,
         net::serialize(result),
         packet.header.sessionTokenHash);
@@ -935,6 +1115,50 @@ void ZoneServer::handleDebugCommand(
         }
         response.ok = combatManager_->forceEndCombat(player->characterId, combat::CombatOutcome::Victory);
         response.message = response.ok ? "Combat ended" : "Not in combat";
+        break;
+    }
+    case net::DebugCommand::UnlockAllSpells:
+    {
+        if (player == nullptr || combatManager_ == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        combatManager_->unlockAllSpells(player->characterId);
+        response.ok = true;
+        response.message = "Unlocked all class spells and abilities";
+        break;
+    }
+    case net::DebugCommand::FillMana:
+    {
+        if (player == nullptr || combatManager_ == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        combatManager_->fillMana(player->characterId);
+        response.ok = true;
+        response.message = "Mana filled";
+        break;
+    }
+    case net::DebugCommand::SpawnAi:
+    {
+        if (player == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        std::string classId = "cleric";
+        uint16_t level = player->level;
+        if (!request.args.empty())
+        {
+            classId = request.args[0];
+        }
+        if (request.args.size() >= 2)
+        {
+            level = static_cast<uint16_t>(std::stoul(request.args[1]));
+        }
+        response.ok = spawnAiCompanion(*player, classId, level, response.message);
         break;
     }
     default:

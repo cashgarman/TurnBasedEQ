@@ -11,7 +11,12 @@ add_library(tbeq_shared
     src/world/TileDefCatalog.cpp
     src/world/ZoneGrid.cpp
     src/content/MobCatalog.cpp
+    src/content/SpellCatalog.cpp
+    src/content/AbilityCatalog.cpp
     src/combat/CombatInstance.cpp
+    src/ai/ClassCombatProfileCatalog.cpp
+    src/ai/ClassCombatBrain.cpp
+    src/ai/PartyMemberAI.cpp
     src/social/ChatChannel.cpp
     src/npc/DialogTree.cpp
     src/npc/InteractionResolver.cpp

@@ -16,6 +16,9 @@ enum class DebugCommand : uint16_t
     KillTarget = 11,
     GodMode = 12,
     ForceCombatEnd = 13,
+    UnlockAllSpells = 14,
+    FillMana = 15,
+    SpawnAi = 16,
     Unknown = 9999,
 };
 

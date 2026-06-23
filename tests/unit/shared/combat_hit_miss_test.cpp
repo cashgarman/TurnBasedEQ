@@ -3,7 +3,9 @@
 #include <random>
 
 #include "tbeq/combat/CombatInstance.hpp"
+#include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
+#include "tbeq/content/SpellCatalog.hpp"
 #include "tbeq/core/CharacterState.hpp"
 #include "tbeq/skills/SkillResolver.hpp"
 
@@ -35,13 +37,15 @@ TEST_CASE("combat melee action can damage enemy", "[combat]")
 {
     tbeq::SkillResolver resolver;
     tbeq::content::MobCatalog catalog;
+    tbeq::content::SpellCatalog spells;
+    tbeq::content::AbilityCatalog abilities;
     std::mt19937 rng(999);
 
-    tbeq::combat::CombatInstance combat(3, resolver, catalog, rng);
+    tbeq::combat::CombatInstance combat(3, resolver, catalog, spells, abilities, rng);
     tbeq::CharacterState playerState = tbeq::CharacterState::createDefault("warrior", 5);
     playerState.skills["offense"] = {40, 0};
     playerState.skills["1h_slash"] = {40, 0};
-    combat.addPlayer("hero", "Hero", 5, playerState);
+    combat.addPlayer("hero", "Hero", "warrior", 5, playerState, true, false);
 
     tbeq::content::MobDef mob;
     mob.id = "dummy";
@@ -66,16 +70,18 @@ TEST_CASE("melee attack can miss against high defense", "[combat]")
 {
     tbeq::SkillResolver resolver;
     tbeq::content::MobCatalog catalog;
+    tbeq::content::SpellCatalog spells;
+    tbeq::content::AbilityCatalog abilities;
     std::mt19937 rng(2024);
 
     bool sawMiss = false;
     for (int attempt = 0; attempt < 20; ++attempt)
     {
-        tbeq::combat::CombatInstance combat(static_cast<uint32_t>(attempt + 10), resolver, catalog, rng);
+        tbeq::combat::CombatInstance combat(static_cast<uint32_t>(attempt + 10), resolver, catalog, spells, abilities, rng);
         tbeq::CharacterState playerState = tbeq::CharacterState::createDefault("warrior", 1);
         playerState.skills["offense"] = {1, 0};
         playerState.skills["1h_slash"] = {1, 0};
-        combat.addPlayer("hero", "Hero", 1, playerState);
+        combat.addPlayer("hero", "Hero", "warrior", 1, playerState, true, false);
 
         tbeq::content::MobDef mob;
         mob.id = "turtle";

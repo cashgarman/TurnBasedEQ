@@ -23,7 +23,11 @@ struct CharacterState
     uint16_t mana = 50;
     uint16_t maxMana = 50;
     uint16_t agi = 75;
+    std::string classId;
+    uint16_t level = 1;
     std::unordered_map<std::string, SkillProgress> skills;
+    std::vector<std::string> unlockedSpells;
+    std::vector<std::string> unlockedAbilities;
     std::vector<InventoryItem> inventory;
     std::string equippedWeaponSkill = "1h_slash";
     bool godMode = false;
@@ -35,6 +39,11 @@ struct CharacterState
     SkillProgress& skillOrDefault(const std::string& skillId);
     uint16_t skillLevel(const std::string& skillId) const;
     void addItem(const std::string& itemId, uint16_t quantity);
+    bool knowsSpell(const std::string& spellId) const;
+    bool knowsAbility(const std::string& abilityId) const;
+    void unlockAllClassContent(
+        const std::vector<std::string>& spellIds,
+        const std::vector<std::string>& abilityIds);
 };
 
 } // namespace tbeq

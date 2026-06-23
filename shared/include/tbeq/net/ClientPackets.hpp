@@ -198,6 +198,8 @@ struct CombatParticipantPayload
     uint16_t maxMana = 0;
     bool isAlive = true;
     bool isPlayerControlled = false;
+    bool isAiCompanion = false;
+    std::string classId;
 };
 
 struct CombatStartPayload
@@ -242,6 +244,8 @@ struct SubmitActionPayload
     uint32_t combatId = 0;
     uint8_t actionType = 0;
     uint32_t targetCombatSlot = 0;
+    std::string spellId;
+    std::string abilityId;
 };
 
 struct SubmitActionResultPayload
@@ -254,6 +258,19 @@ struct CharacterVitalsPayload
 {
     uint16_t hp = 0;
     uint16_t maxHp = 0;
+    uint16_t mana = 0;
+    uint16_t maxMana = 0;
+};
+
+struct MeditateRequestPayload
+{
+};
+
+struct MeditateResultPayload
+{
+    bool ok = false;
+    std::string message;
+    uint16_t manaGained = 0;
     uint16_t mana = 0;
     uint16_t maxMana = 0;
 };

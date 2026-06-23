@@ -445,6 +445,8 @@ ByteWriter serialize(const CombatParticipantPayload& payload)
     writer.writeU16(payload.maxMana);
     writer.writeBool(payload.isAlive);
     writer.writeBool(payload.isPlayerControlled);
+    writer.writeBool(payload.isAiCompanion);
+    writer.writeString(payload.classId);
     return writer;
 }
 
@@ -521,6 +523,8 @@ ByteWriter serialize(const SubmitActionPayload& payload)
     writer.writeU32(payload.combatId);
     writer.writeU8(payload.actionType);
     writer.writeU32(payload.targetCombatSlot);
+    writer.writeString(payload.spellId);
+    writer.writeString(payload.abilityId);
     return writer;
 }
 
@@ -537,6 +541,17 @@ ByteWriter serialize(const CharacterVitalsPayload& payload)
     ByteWriter writer;
     writer.writeU16(payload.hp);
     writer.writeU16(payload.maxHp);
+    writer.writeU16(payload.mana);
+    writer.writeU16(payload.maxMana);
+    return writer;
+}
+
+ByteWriter serialize(const MeditateResultPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeBool(payload.ok);
+    writer.writeString(payload.message);
+    writer.writeU16(payload.manaGained);
     writer.writeU16(payload.mana);
     writer.writeU16(payload.maxMana);
     return writer;
@@ -1078,7 +1093,9 @@ bool readCombatParticipant(ByteReader& reader, CombatParticipantPayload& out)
         && reader.readU16(out.mana)
         && reader.readU16(out.maxMana)
         && reader.readBool(out.isAlive)
-        && reader.readBool(out.isPlayerControlled);
+        && reader.readBool(out.isPlayerControlled)
+        && reader.readBool(out.isAiCompanion)
+        && reader.readString(out.classId);
 }
 
 bool readEmbeddedCombatParticipant(ByteReader& reader, CombatParticipantPayload& out)
@@ -1228,7 +1245,9 @@ bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionPayload
     ByteReader reader(packet.payload);
     return reader.readU32(out.combatId)
         && reader.readU8(out.actionType)
-        && reader.readU32(out.targetCombatSlot);
+        && reader.readU32(out.targetCombatSlot)
+        && reader.readString(out.spellId)
+        && reader.readString(out.abilityId);
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionResultPayload& out)
@@ -1252,6 +1271,21 @@ bool deserializeClientPacket(const SerializedPacket& packet, CharacterVitalsPayl
     ByteReader reader(packet.payload);
     return reader.readU16(out.hp)
         && reader.readU16(out.maxHp)
+        && reader.readU16(out.mana)
+        && reader.readU16(out.maxMana);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, MeditateResultPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::MeditateResult))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readBool(out.ok)
+        && reader.readString(out.message)
+        && reader.readU16(out.manaGained)
         && reader.readU16(out.mana)
         && reader.readU16(out.maxMana);
 }

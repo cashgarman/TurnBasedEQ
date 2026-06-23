@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace tbeq::combat
@@ -26,6 +27,8 @@ enum class CombatActionType : uint8_t
     MeleeAttack = 1,
     Defend = 2,
     Flee = 3,
+    CastSpell = 4,
+    UseAbility = 5,
 };
 
 enum class CombatOutcome : uint8_t
@@ -49,6 +52,29 @@ enum class CombatEventType : uint8_t
     Loot = 8,
     CombatEnd = 9,
     TurnStart = 10,
+    Heal = 11,
+    SpellCast = 12,
+    SpellFizzle = 13,
+    SpellResist = 14,
+    AbilityUsed = 15,
+    StatusApplied = 16,
+    StatusTick = 17,
+    ManaSpend = 18,
+};
+
+enum class StatusEffectType : uint8_t
+{
+    Stun = 0,
+    Snare = 1,
+    Dot = 2,
+};
+
+struct StatusEffect
+{
+    StatusEffectType type = StatusEffectType::Stun;
+    uint16_t remainingTurns = 0;
+    int32_t tickValue = 0;
+    std::string sourceName;
 };
 
 struct CombatEvent
@@ -67,6 +93,7 @@ struct CombatParticipant
     std::string characterId;
     std::string mobId;
     std::string name;
+    std::string classId;
     CombatSide side = CombatSide::Player;
     uint16_t level = 1;
     uint16_t hp = 0;
@@ -80,10 +107,27 @@ struct CombatParticipant
     uint16_t weaponSkillLevel = 1;
     uint16_t offenseSkillLevel = 1;
     uint16_t defenseSkillLevel = 1;
+    uint16_t channelingSkillLevel = 1;
+    std::unordered_map<std::string, uint16_t> skillLevels;
+    std::vector<std::string> unlockedSpells;
+    std::vector<std::string> unlockedAbilities;
+    std::vector<StatusEffect> statusEffects;
     bool isAlive = true;
     bool isDefending = false;
     bool isPlayerControlled = false;
+    bool isAiCompanion = false;
     bool godMode = false;
+    bool isStunned() const;
+    bool isSnared() const;
+    uint16_t skillLevel(const std::string& skillId) const;
+};
+
+struct CombatActionIntent
+{
+    CombatActionType action = CombatActionType::None;
+    uint32_t targetSlot = 0;
+    std::string spellId;
+    std::string abilityId;
 };
 
 } // namespace tbeq::combat

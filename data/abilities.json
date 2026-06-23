@@ -1,0 +1,37 @@
+[
+  {
+    "id": "warrior_bash",
+    "name": "Bash",
+    "classId": "warrior",
+    "targetType": "single_enemy",
+    "effect": "damage_stun",
+    "baseValue": 8,
+    "linkedSkill": "bash",
+    "skillCheck": "bash",
+    "stunTurns": 1,
+    "minLevel": 1
+  },
+  {
+    "id": "rogue_backstab",
+    "name": "Backstab",
+    "classId": "rogue",
+    "targetType": "single_enemy",
+    "effect": "damage",
+    "baseValue": 20,
+    "linkedSkill": "offense",
+    "skillCheck": "1h_pierce",
+    "minLevel": 1
+  },
+  {
+    "id": "warrior_kick",
+    "name": "Kick",
+    "classId": "warrior",
+    "targetType": "single_enemy",
+    "effect": "damage_snare",
+    "baseValue": 6,
+    "linkedSkill": "kick",
+    "skillCheck": "kick",
+    "snareTurns": 2,
+    "minLevel": 1
+  }
+]

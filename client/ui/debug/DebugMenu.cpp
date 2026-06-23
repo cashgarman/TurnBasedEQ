@@ -37,6 +37,26 @@ void DebugMenu::drawCheats(
         appendLogLine("[Debug] " + response.message);
     }
     ImGui::SameLine();
+    if (ImGui::Button("Spawn AI Cleric"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::SpawnAi, {"cleric"}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    if (ImGui::Button("Fill mana"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::FillMana, {}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Unlock spells"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::UnlockAllSpells, {}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    ImGui::SameLine();
     if (ImGui::Button("God mode"))
     {
         tbeq::net::DebugCommandResponsePayload response;

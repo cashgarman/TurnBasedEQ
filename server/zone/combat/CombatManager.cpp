@@ -13,13 +13,22 @@ CombatManager::CombatManager(
     asio::io_context& io,
     SkillResolver& skillResolver,
     const content::MobCatalog& mobCatalog,
+    const content::SpellCatalog& spellCatalog,
+    const content::AbilityCatalog& abilityCatalog,
+    const ai::ClassCombatProfileCatalog& aiProfiles,
     FindPlayerFn findPlayer,
+    FindAiCompanionsFn findAiCompanions,
     BroadcastFn broadcast,
     PersistStateFn persistState)
     : io_(io)
     , skillResolver_(skillResolver)
     , mobCatalog_(mobCatalog)
+    , spellCatalog_(spellCatalog)
+    , abilityCatalog_(abilityCatalog)
+    , classCombatBrain_(aiProfiles, spellCatalog, abilityCatalog)
+    , partyMemberAi_(classCombatBrain_)
     , findPlayer_(std::move(findPlayer))
+    , findAiCompanions_(std::move(findAiCompanions))
     , broadcast_(std::move(broadcast))
     , persistState_(std::move(persistState))
     , rng_(std::random_device{}())
@@ -43,6 +52,8 @@ net::CombatParticipantPayload CombatManager::toPayload(const combat::CombatParti
     payload.maxMana = participant.maxMana;
     payload.isAlive = participant.isAlive;
     payload.isPlayerControlled = participant.isPlayerControlled;
+    payload.isAiCompanion = participant.isAiCompanion;
+    payload.classId = participant.classId;
     return payload;
 }
 
@@ -106,10 +117,19 @@ void CombatManager::syncParticipantFromPlayer(combat::CombatParticipant& partici
     participant.mana = player.state->mana;
     participant.maxMana = player.state->maxMana;
     participant.agi = player.state->agi;
+    participant.classId = player.classId;
     participant.weaponSkillId = player.state->equippedWeaponSkill;
     participant.weaponSkillLevel = player.state->skillLevel(player.state->equippedWeaponSkill);
     participant.offenseSkillLevel = player.state->skillLevel("offense");
     participant.defenseSkillLevel = player.state->skillLevel("defense");
+    participant.channelingSkillLevel = player.state->skillLevel("channeling");
+    participant.unlockedSpells = player.state->unlockedSpells;
+    participant.unlockedAbilities = player.state->unlockedAbilities;
+    participant.skillLevels.clear();
+    for (const auto& [skillId, progress] : player.state->skills)
+    {
+        participant.skillLevels[skillId] = progress.level;
+    }
     participant.godMode = player.state->godMode;
 }
 
@@ -216,6 +236,63 @@ bool CombatManager::isInCombat(const std::string& characterId) const
     return findCombatForCharacter(characterId) != nullptr;
 }
 
+void CombatManager::addPlayerToCombat(ActiveCombat& combat, PlayerView& player, bool playerControlled, bool aiCompanion)
+{
+    if (player.state == nullptr)
+    {
+        return;
+    }
+
+    combat.instance->addPlayer(
+        player.characterId,
+        player.name,
+        player.classId,
+        player.level,
+        *player.state,
+        playerControlled,
+        aiCompanion);
+
+    for (const auto& participant : combat.instance->participants())
+    {
+        if (participant.characterId == player.characterId)
+        {
+            combat.slotToCharacterId[participant.slot] = player.characterId;
+            if (player.combatSlot != nullptr)
+            {
+                *player.combatSlot = participant.slot;
+            }
+            break;
+        }
+    }
+
+    if (!aiCompanion)
+    {
+        if (std::find(combat.playerCharacterIds.begin(), combat.playerCharacterIds.end(), player.characterId)
+            == combat.playerCharacterIds.end())
+        {
+            combat.playerCharacterIds.push_back(player.characterId);
+        }
+    }
+
+    characterCombatIds_[player.characterId] = combat.instance->combatId();
+    if (player.inCombat != nullptr)
+    {
+        *player.inCombat = true;
+    }
+    if (player.combatId != nullptr)
+    {
+        *player.combatId = combat.instance->combatId();
+    }
+}
+
+void CombatManager::addAiCompanionsToCombat(ActiveCombat& combat, const std::string& leaderCharacterId)
+{
+    for (PlayerView& aiView : findAiCompanions_(leaderCharacterId))
+    {
+        addPlayerToCombat(combat, aiView, false, true);
+    }
+}
+
 bool CombatManager::tryStartSpawnCombat(PlayerView& player, const std::string& mobTable)
 {
     if (player.inCombat != nullptr && *player.inCombat)
@@ -245,22 +322,16 @@ bool CombatManager::startDebugCombat(PlayerView& player, const std::vector<std::
 
     const uint32_t combatId = allocateCombatId();
     ActiveCombat activeCombat;
-    activeCombat.instance = std::make_unique<combat::CombatInstance>(combatId, skillResolver_, mobCatalog_, rng_);
-    activeCombat.playerCharacterIds.push_back(player.characterId);
+    activeCombat.instance = std::make_unique<combat::CombatInstance>(
+        combatId,
+        skillResolver_,
+        mobCatalog_,
+        spellCatalog_,
+        abilityCatalog_,
+        rng_);
 
-    activeCombat.instance->addPlayer(player.characterId, player.name, player.level, *player.state);
-    for (const auto& participant : activeCombat.instance->participants())
-    {
-        if (participant.isPlayerControlled)
-        {
-            activeCombat.slotToCharacterId[participant.slot] = player.characterId;
-            if (player.combatSlot != nullptr)
-            {
-                *player.combatSlot = participant.slot;
-            }
-            break;
-        }
-    }
+    addPlayerToCombat(activeCombat, player, true, false);
+    addAiCompanionsToCombat(activeCombat, player.characterId);
 
     for (const auto& mobId : mobIds)
     {
@@ -279,18 +350,8 @@ bool CombatManager::startDebugCombat(PlayerView& player, const std::vector<std::
 
     activeCombat.instance->rollInitiative();
     combats_.emplace(combatId, std::move(activeCombat));
-    characterCombatIds_[player.characterId] = combatId;
-
-    if (player.inCombat != nullptr)
-    {
-        *player.inCombat = true;
-    }
-    if (player.combatId != nullptr)
-    {
-        *player.combatId = combatId;
-    }
-
     auto& combat = combats_.at(combatId);
+
     broadcastCombatStart(combat);
     beginTurn(combat);
     return true;
@@ -315,7 +376,7 @@ void CombatManager::broadcastEvents(ActiveCombat& combat, const std::vector<comb
         const auto payload = toEventPayload(combat.instance->combatId(), event);
         broadcast_(combat.playerCharacterIds, net::ClientPacketType::CombatEvent, net::serialize(payload));
 
-        if (event.type == combat::CombatEventType::Damage)
+        if (event.type == combat::CombatEventType::Damage || event.type == combat::CombatEventType::AbilityUsed)
         {
             const auto slotIt = combat.slotToCharacterId.find(event.actorSlot);
             if (slotIt != combat.slotToCharacterId.end())
@@ -340,6 +401,24 @@ void CombatManager::broadcastEvents(ActiveCombat& combat, const std::vector<comb
     }
 }
 
+void CombatManager::syncAllParticipants(ActiveCombat& combat)
+{
+    for (const auto& [slot, characterId] : combat.slotToCharacterId)
+    {
+        if (combat::CombatParticipant* participant = combat.instance->participantBySlot(slot))
+        {
+            if (PlayerView* player = findPlayer_(characterId))
+            {
+                syncPlayerFromParticipant(*participant, *player);
+                if (player->state != nullptr)
+                {
+                    persistState_(characterId, *player->state);
+                }
+            }
+        }
+    }
+}
+
 void CombatManager::beginTurn(ActiveCombat& combat)
 {
     if (combat.instance->outcome() != combat::CombatOutcome::InProgress)
@@ -356,6 +435,12 @@ void CombatManager::beginTurn(ActiveCombat& combat)
     }
 
     broadcastUpdate(combat);
+
+    if (actor->isAiCompanion)
+    {
+        resolveAiCompanionTurn(combat);
+        return;
+    }
 
     if (!actor->isPlayerControlled)
     {
@@ -376,6 +461,37 @@ void CombatManager::beginTurn(ActiveCombat& combat)
     });
 }
 
+void CombatManager::resolveAiCompanionTurn(ActiveCombat& combat)
+{
+    const combat::CombatParticipant* actor = combat.instance->currentActor();
+    if (actor == nullptr)
+    {
+        return;
+    }
+
+    ai::CombatBrainSnapshot snapshot;
+    snapshot.participants = combat.instance->participants();
+    snapshot.actorSlot = actor->slot;
+
+    const combat::CombatActionIntent intent = partyMemberAi_.chooseCombatAction(*actor, snapshot);
+    if (!combat.instance->submitAction(intent))
+    {
+        combat.instance->submitAction(combat::CombatActionIntent{combat::CombatActionType::Defend, 0, {}, {}});
+    }
+
+    const auto events = combat.instance->takePendingEvents();
+    broadcastEvents(combat, events);
+    syncAllParticipants(combat);
+
+    if (combat.instance->outcome() != combat::CombatOutcome::InProgress)
+    {
+        finishCombat(combat);
+        return;
+    }
+
+    beginTurn(combat);
+}
+
 void CombatManager::resolveEnemyTurn(ActiveCombat& combat)
 {
     const combat::CombatParticipant* actor = combat.instance->currentActor();
@@ -391,24 +507,17 @@ void CombatManager::resolveEnemyTurn(ActiveCombat& combat)
         targetSlot = combat.instance->chooseEnemyTarget(actor->slot);
     }
 
-    if (!combat.instance->submitAction(actor->slot, action, targetSlot))
+    combat::CombatActionIntent intent;
+    intent.action = action;
+    intent.targetSlot = targetSlot;
+    if (!combat.instance->submitAction(intent))
     {
-        combat.instance->submitAction(actor->slot, combat::CombatActionType::Defend, 0);
+        combat.instance->submitAction(combat::CombatActionIntent{combat::CombatActionType::Defend, 0, {}, {}});
     }
 
     const auto events = combat.instance->takePendingEvents();
     broadcastEvents(combat, events);
-
-    for (const auto& [slot, characterId] : combat.slotToCharacterId)
-    {
-        if (combat::CombatParticipant* participant = combat.instance->participantBySlot(slot))
-        {
-            if (PlayerView* player = findPlayer_(characterId))
-            {
-                syncPlayerFromParticipant(*participant, *player);
-            }
-        }
-    }
+    syncAllParticipants(combat);
 
     if (combat.instance->outcome() != combat::CombatOutcome::InProgress)
     {
@@ -434,30 +543,12 @@ void CombatManager::onTurnTimeout(uint32_t combatId, uint32_t actorSlot)
         return;
     }
 
-    const auto action = combat::CombatActionType::MeleeAttack;
-    const uint32_t targetSlot = combat.instance->chooseEnemyTarget(actorSlot);
-    if (targetSlot == 0)
-    {
-        combat.instance->submitAction(actorSlot, combat::CombatActionType::Defend, 0);
-    }
-    else
-    {
-        combat.instance->submitAction(actorSlot, action, targetSlot);
-    }
+    const auto defaultIntent = combat.instance->defaultPlayerAction(actorSlot);
+    combat.instance->submitAction(defaultIntent);
 
     const auto events = combat.instance->takePendingEvents();
     broadcastEvents(combat, events);
-
-    for (const auto& [slot, characterId] : combat.slotToCharacterId)
-    {
-        if (combat::CombatParticipant* participant = combat.instance->participantBySlot(slot))
-        {
-            if (PlayerView* player = findPlayer_(characterId))
-            {
-                syncPlayerFromParticipant(*participant, *player);
-            }
-        }
-    }
+    syncAllParticipants(combat);
 
     if (combat.instance->outcome() != combat::CombatOutcome::InProgress)
     {
@@ -499,8 +590,20 @@ bool CombatManager::submitAction(
         combat->turnTimer.reset();
     }
 
-    const auto action = static_cast<combat::CombatActionType>(request.actionType);
-    if (!combat->instance->submitAction(slotIt->first, action, request.targetCombatSlot))
+    combat::CombatActionIntent intent;
+    intent.action = static_cast<combat::CombatActionType>(request.actionType);
+    intent.targetSlot = request.targetCombatSlot;
+    intent.spellId = request.spellId;
+    intent.abilityId = request.abilityId;
+
+    const combat::CombatParticipant* expected = combat->instance->currentActor();
+    if (expected == nullptr || expected->slot != slotIt->first)
+    {
+        result.message = "Not your turn";
+        return false;
+    }
+
+    if (!combat->instance->submitAction(intent))
     {
         result.message = "Invalid action";
         return false;
@@ -508,17 +611,7 @@ bool CombatManager::submitAction(
 
     const auto events = combat->instance->takePendingEvents();
     broadcastEvents(*combat, events);
-
-    for (const auto& [slot, boundCharacterId] : combat->slotToCharacterId)
-    {
-        if (combat::CombatParticipant* participant = combat->instance->participantBySlot(slot))
-        {
-            if (PlayerView* player = findPlayer_(boundCharacterId))
-            {
-                syncPlayerFromParticipant(*participant, *player);
-            }
-        }
-    }
+    syncAllParticipants(*combat);
 
     result.ok = true;
     result.message = "Action accepted";
@@ -587,7 +680,7 @@ void CombatManager::finishCombat(ActiveCombat& combat)
     }
     broadcast_(combat.playerCharacterIds, net::ClientPacketType::CombatEnd, net::serialize(endPayload));
 
-    for (const auto& characterId : combat.playerCharacterIds)
+    for (const auto& [slot, characterId] : combat.slotToCharacterId)
     {
         if (PlayerView* player = findPlayer_(characterId))
         {
@@ -642,10 +735,10 @@ bool CombatManager::forceEndCombat(const std::string& characterId, combat::Comba
         {
             if (participant.side == combat::CombatSide::Player && participant.isAlive)
             {
-                if (combat::CombatParticipant* player = combat->instance->participantBySlot(participant.slot))
+                if (combat::CombatParticipant* playerParticipant = combat->instance->participantBySlot(participant.slot))
                 {
-                    player->hp = 0;
-                    player->isAlive = false;
+                    playerParticipant->hp = 0;
+                    playerParticipant->isAlive = false;
                 }
             }
         }
@@ -706,6 +799,49 @@ void CombatManager::setGodMode(const std::string& characterId, bool enabled)
             player->state->godMode = enabled;
             persistState_(characterId, *player->state);
         }
+    }
+}
+
+void CombatManager::fillMana(const std::string& characterId)
+{
+    if (PlayerView* player = findPlayer_(characterId))
+    {
+        if (player->state != nullptr)
+        {
+            player->state->mana = player->state->maxMana;
+            persistState_(characterId, *player->state);
+
+            net::CharacterVitalsPayload vitals;
+            vitals.hp = player->state->hp;
+            vitals.maxHp = player->state->maxHp;
+            vitals.mana = player->state->mana;
+            vitals.maxMana = player->state->maxMana;
+            broadcast_({characterId}, net::ClientPacketType::CharacterVitals, net::serialize(vitals));
+        }
+    }
+}
+
+void CombatManager::unlockAllSpells(const std::string& characterId)
+{
+    if (PlayerView* player = findPlayer_(characterId))
+    {
+        if (player->state == nullptr)
+        {
+            return;
+        }
+
+        std::vector<std::string> spellIds;
+        for (const auto* spell : spellCatalog_.spellsForClass(player->classId, player->level))
+        {
+            spellIds.push_back(spell->id);
+        }
+        std::vector<std::string> abilityIds;
+        for (const auto* ability : abilityCatalog_.abilitiesForClass(player->classId, player->level))
+        {
+            abilityIds.push_back(ability->id);
+        }
+        player->state->unlockAllClassContent(spellIds, abilityIds);
+        persistState_(characterId, *player->state);
     }
 }
 

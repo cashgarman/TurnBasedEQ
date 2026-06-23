@@ -1,24 +1,85 @@
 #include "tbeq/core/CharacterState.hpp"
 
+#include <algorithm>
+
 #include <nlohmann/json.hpp>
 
 namespace tbeq
 {
 
-CharacterState CharacterState::createDefault(const std::string& classId, uint16_t level)
+namespace
 {
-    (void)classId;
-    CharacterState state;
-    state.maxHp = static_cast<uint16_t>(80 + level * 10);
-    state.hp = state.maxHp;
-    state.maxMana = static_cast<uint16_t>(40 + level * 5);
-    state.mana = state.maxMana;
-    state.agi = static_cast<uint16_t>(70 + level);
 
+void applyClassSkills(CharacterState& state, const std::string& classId, uint16_t level)
+{
     const uint16_t baseSkill = static_cast<uint16_t>(5 + level);
     state.skills["offense"] = {baseSkill, 0};
     state.skills["defense"] = {baseSkill, 0};
-    state.skills["1h_slash"] = {baseSkill, 0};
+
+    if (classId == "warrior")
+    {
+        state.skills["1h_slash"] = {baseSkill, 0};
+        state.skills["bash"] = {baseSkill, 0};
+        state.skills["kick"] = {baseSkill, 0};
+        state.equippedWeaponSkill = "1h_slash";
+        state.unlockedAbilities = {"warrior_bash", "warrior_kick"};
+    }
+    else if (classId == "cleric")
+    {
+        state.skills["1h_blunt"] = {baseSkill, 0};
+        state.skills["alteration"] = {baseSkill, 0};
+        state.skills["evocation"] = {static_cast<uint16_t>(baseSkill / 2), 0};
+        state.skills["channeling"] = {baseSkill, 0};
+        state.skills["meditate"] = {baseSkill, 0};
+        state.equippedWeaponSkill = "1h_blunt";
+        state.unlockedSpells = {"cleric_heal"};
+    }
+    else if (classId == "wizard")
+    {
+        state.skills["evocation"] = {baseSkill, 0};
+        state.skills["abjuration"] = {static_cast<uint16_t>(baseSkill / 2), 0};
+        state.skills["channeling"] = {baseSkill, 0};
+        state.skills["meditate"] = {baseSkill, 0};
+        state.equippedWeaponSkill = "1h_blunt";
+        state.unlockedSpells = {"wizard_nuke"};
+    }
+    else if (classId == "rogue")
+    {
+        state.skills["1h_pierce"] = {baseSkill, 0};
+        state.skills["offense"] = {static_cast<uint16_t>(baseSkill + 2), 0};
+        state.equippedWeaponSkill = "1h_pierce";
+        state.unlockedAbilities = {"rogue_backstab"};
+    }
+    else
+    {
+        state.skills["1h_slash"] = {baseSkill, 0};
+        state.equippedWeaponSkill = "1h_slash";
+    }
+}
+
+} // namespace
+
+CharacterState CharacterState::createDefault(const std::string& classId, uint16_t level)
+{
+    CharacterState state;
+    state.classId = classId;
+    state.level = level;
+    state.maxHp = static_cast<uint16_t>(80 + level * 10);
+    state.hp = state.maxHp;
+    state.agi = static_cast<uint16_t>(70 + level);
+
+    if (classId == "warrior" || classId == "rogue")
+    {
+        state.maxMana = 0;
+        state.mana = 0;
+    }
+    else
+    {
+        state.maxMana = static_cast<uint16_t>(40 + level * 8);
+        state.mana = state.maxMana;
+    }
+
+    applyClassSkills(state, classId, level);
     return state;
 }
 
@@ -33,6 +94,14 @@ CharacterState CharacterState::fromJson(const std::string& json)
     try
     {
         const auto parsed = nlohmann::json::parse(json);
+        if (parsed.contains("classId"))
+        {
+            state.classId = parsed["classId"].get<std::string>();
+        }
+        if (parsed.contains("level"))
+        {
+            state.level = parsed["level"].get<uint16_t>();
+        }
         if (parsed.contains("hp"))
         {
             state.hp = parsed["hp"].get<uint16_t>();
@@ -72,6 +141,22 @@ CharacterState CharacterState::fromJson(const std::string& json)
                 state.skills[skillId] = progress;
             }
         }
+        if (parsed.contains("unlockedSpells") && parsed["unlockedSpells"].is_array())
+        {
+            state.unlockedSpells.clear();
+            for (const auto& spellId : parsed["unlockedSpells"])
+            {
+                state.unlockedSpells.push_back(spellId.get<std::string>());
+            }
+        }
+        if (parsed.contains("unlockedAbilities") && parsed["unlockedAbilities"].is_array())
+        {
+            state.unlockedAbilities.clear();
+            for (const auto& abilityId : parsed["unlockedAbilities"])
+            {
+                state.unlockedAbilities.push_back(abilityId.get<std::string>());
+            }
+        }
         if (parsed.contains("inventory") && parsed["inventory"].is_array())
         {
             state.inventory.clear();
@@ -98,6 +183,8 @@ CharacterState CharacterState::fromJson(const std::string& json)
 std::string CharacterState::toJson() const
 {
     nlohmann::json parsed;
+    parsed["classId"] = classId;
+    parsed["level"] = level;
     parsed["hp"] = hp;
     parsed["maxHp"] = maxHp;
     parsed["mana"] = mana;
@@ -114,6 +201,20 @@ std::string CharacterState::toJson() const
             {"experience", progress.experience}};
     }
     parsed["skills"] = skillsJson;
+
+    nlohmann::json spellsJson = nlohmann::json::array();
+    for (const auto& spellId : unlockedSpells)
+    {
+        spellsJson.push_back(spellId);
+    }
+    parsed["unlockedSpells"] = spellsJson;
+
+    nlohmann::json abilitiesJson = nlohmann::json::array();
+    for (const auto& abilityId : unlockedAbilities)
+    {
+        abilitiesJson.push_back(abilityId);
+    }
+    parsed["unlockedAbilities"] = abilitiesJson;
 
     nlohmann::json inventoryJson = nlohmann::json::array();
     for (const auto& item : inventory)
@@ -152,6 +253,24 @@ void CharacterState::addItem(const std::string& itemId, uint16_t quantity)
         }
     }
     inventory.push_back({itemId, quantity});
+}
+
+bool CharacterState::knowsSpell(const std::string& spellId) const
+{
+    return std::find(unlockedSpells.begin(), unlockedSpells.end(), spellId) != unlockedSpells.end();
+}
+
+bool CharacterState::knowsAbility(const std::string& abilityId) const
+{
+    return std::find(unlockedAbilities.begin(), unlockedAbilities.end(), abilityId) != unlockedAbilities.end();
+}
+
+void CharacterState::unlockAllClassContent(
+    const std::vector<std::string>& spellIds,
+    const std::vector<std::string>& abilityIds)
+{
+    unlockedSpells = spellIds;
+    unlockedAbilities = abilityIds;
 }
 
 } // namespace tbeq

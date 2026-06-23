@@ -1,0 +1,26 @@
+[
+  {
+    "id": "cleric_heal",
+    "name": "Minor Heal",
+    "classId": "cleric",
+    "manaCost": 10,
+    "school": "alteration",
+    "targetType": "single_ally",
+    "effect": "heal",
+    "baseValue": 25,
+    "linkedSkill": "alteration",
+    "minLevel": 1
+  },
+  {
+    "id": "wizard_nuke",
+    "name": "Shock Bolt",
+    "classId": "wizard",
+    "manaCost": 15,
+    "school": "evocation",
+    "targetType": "single_enemy",
+    "effect": "damage",
+    "baseValue": 30,
+    "linkedSkill": "evocation",
+    "minLevel": 1
+  }
+]

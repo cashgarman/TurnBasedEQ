@@ -13,7 +13,10 @@
 #include "debug/DebugCommandHandler.hpp"
 #include "combat/CombatManager.hpp"
 #include "net/TcpConnection.hpp"
+#include "tbeq/ai/ClassCombatProfile.hpp"
+#include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
+#include "tbeq/content/SpellCatalog.hpp"
 #include "tbeq/core/CharacterState.hpp"
 #include "tbeq/core/Config.hpp"
 #include "tbeq/persistence/Database.hpp"
@@ -33,6 +36,22 @@ public:
     bool connectAndRegister();
 
 private:
+    struct AiPartyMember
+    {
+        std::string characterId;
+        std::string name;
+        std::string classId;
+        uint16_t level = 1;
+        CharacterState characterState;
+        std::string leaderCharacterId;
+        uint32_t entityId = 0;
+        int32_t tileX = 0;
+        int32_t tileY = 0;
+        bool inCombat = false;
+        uint32_t combatId = 0;
+        uint32_t combatSlot = 0;
+    };
+
     struct PlayerEntity
     {
         std::string characterId;
@@ -115,12 +134,14 @@ private:
 
     PlayerEntity* findPlayerByConnection(const std::shared_ptr<TcpConnection>& connection);
     PlayerEntity* findPlayerByCharacterId(const std::string& characterId);
+    AiPartyMember* findAiByCharacterId(const std::string& characterId);
     void removePlayer(const std::string& characterId);
 
     void handleSessionResume(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleRequestZoneTiles(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleMoveIntent(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleSubmitAction(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
+    void handleMeditate(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleDebugCommand(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleChatMessage(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
     void handleUsePortal(const std::shared_ptr<TcpConnection>& connection, const net::SerializedPacket& packet);
@@ -128,6 +149,9 @@ private:
     void deliverSayChat(const PlayerEntity& sender, const std::string& text);
     void tryAggro(PlayerEntity& player);
     CombatManager::PlayerView makePlayerView(PlayerEntity& player);
+    CombatManager::PlayerView makeAiView(AiPartyMember& ai);
+    std::vector<CombatManager::PlayerView> findAiCompanionsForLeader(const std::string& leaderCharacterId);
+    bool spawnAiCompanion(PlayerEntity& leader, const std::string& classId, uint16_t level, std::string& outMessage);
     void broadcastToPlayers(const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer);
     void persistPlayerState(const std::string& characterId, const CharacterState& state);
 
@@ -136,6 +160,9 @@ private:
     DebugCommandHandler debugHandler_;
     SkillResolver skillResolver_;
     content::MobCatalog mobCatalog_;
+    content::SpellCatalog spellCatalog_;
+    content::AbilityCatalog abilityCatalog_;
+    ai::ClassCombatProfileCatalog aiProfiles_;
     db::Database database_;
     world::TileDefCatalog tileDefs_;
     world::ZoneGrid zoneGrid_;
@@ -151,11 +178,13 @@ private:
 
     mutable std::mutex stateMutex_;
     std::unordered_map<std::string, PlayerEntity> players_;
+    std::unordered_map<std::string, AiPartyMember> aiCompanions_;
     std::vector<NpcEntity> npcs_;
     std::vector<ZoneSpawnState> spawns_;
     std::unordered_map<std::string, PendingTransfer> pendingTransfers_;
     CombatManager::PlayerView combatViewScratch_;
     uint32_t nextEntityId_ = 1;
+    uint32_t nextAiId_ = 1;
 };
 
 } // namespace tbeq::server

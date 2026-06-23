@@ -7,7 +7,9 @@
 #include <vector>
 
 #include "tbeq/combat/CombatTypes.hpp"
+#include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
+#include "tbeq/content/SpellCatalog.hpp"
 #include "tbeq/core/CharacterState.hpp"
 #include "tbeq/skills/SkillResolver.hpp"
 
@@ -29,6 +31,8 @@ public:
         uint32_t combatId,
         SkillResolver& skillResolver,
         const content::MobCatalog& mobCatalog,
+        const content::SpellCatalog& spellCatalog,
+        const content::AbilityCatalog& abilityCatalog,
         Rng& rng);
 
     uint32_t combatId() const { return combatId_; }
@@ -47,13 +51,17 @@ public:
     void addPlayer(
         const std::string& characterId,
         const std::string& name,
+        const std::string& classId,
         uint16_t level,
-        CharacterState& state);
+        CharacterState& state,
+        bool playerControlled,
+        bool aiCompanion);
     void addMob(const content::MobDef& mobDef);
 
     void rollInitiative();
+    bool submitAction(const CombatActionIntent& intent);
     bool submitAction(uint32_t actorSlot, CombatActionType action, uint32_t targetSlot);
-    CombatActionType defaultPlayerAction(uint32_t actorSlot) const;
+    CombatActionIntent defaultPlayerAction(uint32_t actorSlot) const;
     CombatActionType chooseEnemyAction(uint32_t actorSlot) const;
     uint32_t chooseEnemyTarget(uint32_t actorSlot) const;
 
@@ -63,15 +71,24 @@ public:
 
 private:
     bool resolveMeleeAttack(CombatParticipant& actor, CombatParticipant& target);
+    bool resolveCastSpell(CombatParticipant& actor, const std::string& spellId, CombatParticipant& target);
+    bool resolveUseAbility(CombatParticipant& actor, const std::string& abilityId, CombatParticipant& target);
     bool resolveFlee(CombatParticipant& actor);
     void applyDeath(CombatParticipant& participant);
     void checkOutcome();
     void advanceTurn();
+    void tickStatusEffects(CombatParticipant& participant);
+    void processTurnStartEffects(CombatParticipant& participant);
+    bool isValidSpellTarget(const CombatParticipant& actor, const content::SpellDef& spell, const CombatParticipant& target) const;
+    bool isValidAbilityTarget(const CombatParticipant& actor, const content::AbilityDef& ability, const CombatParticipant& target) const;
+    void applyStatusEffect(CombatParticipant& target, StatusEffectType type, uint16_t turns, int32_t tickValue, const std::string& sourceName);
     uint32_t allocateSlot();
 
     uint32_t combatId_ = 0;
     SkillResolver& skillResolver_;
     const content::MobCatalog& mobCatalog_;
+    const content::SpellCatalog& spellCatalog_;
+    const content::AbilityCatalog& abilityCatalog_;
     Rng& rng_;
     std::vector<CombatParticipant> participants_;
     std::vector<uint32_t> turnOrder_;

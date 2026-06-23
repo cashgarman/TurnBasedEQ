@@ -7,6 +7,37 @@
 namespace tbeq::client
 {
 
+namespace
+{
+
+uint32_t defaultEnemyTarget(const std::vector<net::CombatParticipantPayload>& participants)
+{
+    for (const auto& participant : participants)
+    {
+        if (participant.side == 1 && participant.isAlive)
+        {
+            return participant.combatSlot;
+        }
+    }
+    return 0;
+}
+
+uint32_t defaultAllyTarget(
+    const std::vector<net::CombatParticipantPayload>& participants,
+    uint32_t playerSlot)
+{
+    for (const auto& participant : participants)
+    {
+        if (participant.side == 0 && participant.isAlive && participant.combatSlot != playerSlot)
+        {
+            return participant.combatSlot;
+        }
+    }
+    return playerSlot;
+}
+
+} // namespace
+
 void CombatWindow::reset()
 {
     active_ = false;
@@ -15,6 +46,9 @@ void CombatWindow::reset()
     turnDurationMs_ = 0;
     playerCombatSlot_ = 0;
     selectedTargetSlot_ = 0;
+    playerClassId_.clear();
+    pendingSpellId_.clear();
+    pendingAbilityId_.clear();
     participants_.clear();
     turnOrder_.clear();
     combatLog_.clear();
@@ -28,6 +62,17 @@ void CombatWindow::applyStart(const net::CombatStartPayload& start)
     turnDurationMs_ = start.turnDurationMs;
     participants_ = start.participants;
     turnOrder_ = start.turnOrder;
+    for (const auto& participant : start.participants)
+    {
+        if (participant.isPlayerControlled)
+        {
+            playerClassId_ = participant.classId;
+            playerMana_ = participant.mana;
+            playerMaxMana_ = participant.maxMana;
+            playerHp_ = participant.hp;
+            playerMaxHp_ = participant.maxHp;
+        }
+    }
     combatLog_.push_back("Combat started!");
 }
 
@@ -37,6 +82,16 @@ void CombatWindow::applyUpdate(const net::CombatUpdatePayload& update)
     currentActorSlot_ = update.currentActorSlot;
     turnDurationMs_ = update.turnDurationMs;
     participants_ = update.participants;
+    for (const auto& participant : update.participants)
+    {
+        if (participant.combatSlot == playerCombatSlot_)
+        {
+            playerMana_ = participant.mana;
+            playerMaxMana_ = participant.maxMana;
+            playerHp_ = participant.hp;
+            playerMaxHp_ = participant.maxHp;
+        }
+    }
 }
 
 void CombatWindow::applyEvent(const net::CombatEventPayload& event)
@@ -66,6 +121,18 @@ void CombatWindow::queueFlee()
     pendingAction_ = PendingAction::Flee;
 }
 
+void CombatWindow::queueSpell(const std::string& spellId)
+{
+    pendingAction_ = PendingAction::Spell;
+    pendingSpellId_ = spellId;
+}
+
+void CombatWindow::queueAbility(const std::string& abilityId)
+{
+    pendingAction_ = PendingAction::Ability;
+    pendingAbilityId_ = abilityId;
+}
+
 bool CombatWindow::consumePendingAction(net::SubmitActionPayload& outAction)
 {
     if (pendingAction_ == PendingAction::None || !active_)
@@ -75,20 +142,16 @@ bool CombatWindow::consumePendingAction(net::SubmitActionPayload& outAction)
 
     outAction.combatId = combatId_;
     outAction.targetCombatSlot = selectedTargetSlot_;
+    outAction.spellId.clear();
+    outAction.abilityId.clear();
+
     switch (pendingAction_)
     {
     case PendingAction::Melee:
         outAction.actionType = 1;
         if (outAction.targetCombatSlot == 0)
         {
-            for (const auto& participant : participants_)
-            {
-                if (participant.side == 1 && participant.isAlive)
-                {
-                    outAction.targetCombatSlot = participant.combatSlot;
-                    break;
-                }
-            }
+            outAction.targetCombatSlot = defaultEnemyTarget(participants_);
         }
         break;
     case PendingAction::Defend:
@@ -99,11 +162,36 @@ bool CombatWindow::consumePendingAction(net::SubmitActionPayload& outAction)
         outAction.actionType = 3;
         outAction.targetCombatSlot = 0;
         break;
+    case PendingAction::Spell:
+        outAction.actionType = 4;
+        outAction.spellId = pendingSpellId_;
+        if (pendingSpellId_ == "cleric_heal")
+        {
+            if (outAction.targetCombatSlot == 0)
+            {
+                outAction.targetCombatSlot = defaultAllyTarget(participants_, playerCombatSlot_);
+            }
+        }
+        else if (outAction.targetCombatSlot == 0)
+        {
+            outAction.targetCombatSlot = defaultEnemyTarget(participants_);
+        }
+        break;
+    case PendingAction::Ability:
+        outAction.actionType = 5;
+        outAction.abilityId = pendingAbilityId_;
+        if (outAction.targetCombatSlot == 0)
+        {
+            outAction.targetCombatSlot = defaultEnemyTarget(participants_);
+        }
+        break;
     default:
         return false;
     }
 
     pendingAction_ = PendingAction::None;
+    pendingSpellId_.clear();
+    pendingAbilityId_.clear();
     return true;
 }
 
@@ -170,23 +258,26 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
 
         const bool isCurrent = slot == currentActorSlot_;
         const bool isSelf = slot == playerCombatSlot_;
+        const char* aiTag = participant->isAiCompanion ? " [AI]" : "";
         if (isCurrent)
         {
-            ImGui::Text("> %s%s (%u/%u)%s",
+            ImGui::Text("> %s%s (%u/%u)%s%s",
                 participant->name.c_str(),
                 isSelf ? " (You)" : "",
                 participant->hp,
                 participant->maxHp,
-                participant->isAlive ? "" : " [DEAD]");
+                participant->isAlive ? "" : " [DEAD]",
+                aiTag);
         }
         else
         {
-            ImGui::Text("  %s%s (%u/%u)%s",
+            ImGui::Text("  %s%s (%u/%u)%s%s",
                 participant->name.c_str(),
                 isSelf ? " (You)" : "",
                 participant->hp,
                 participant->maxHp,
-                participant->isAlive ? "" : " [DEAD]");
+                participant->isAlive ? "" : " [DEAD]",
+                aiTag);
         }
     }
 
@@ -194,21 +285,23 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
     ImGui::Text("Targets");
     for (const auto& participant : participants_)
     {
-        if (participant.side != 1 || !participant.isAlive)
+        if (!participant.isAlive)
         {
             continue;
         }
 
         const bool selected = selectedTargetSlot_ == participant.combatSlot;
-        if (ImGui::Selectable(
-                (participant.name + " (" + std::to_string(participant.hp) + "/" + std::to_string(participant.maxHp) + ")").c_str(),
-                selected))
+        const char* sideLabel = participant.side == 1 ? "Enemy" : "Ally";
+        const std::string label = participant.name + " [" + sideLabel + "] ("
+            + std::to_string(participant.hp) + "/" + std::to_string(participant.maxHp) + ")";
+        if (ImGui::Selectable(label.c_str(), selected))
         {
             selectedTargetSlot_ = participant.combatSlot;
         }
     }
 
     ImGui::Separator();
+    ImGui::Text("Ability bar");
     const bool isPlayerTurn = active_ && currentActorSlot_ == playerCombatSlot_;
     if (!isPlayerTurn)
     {
@@ -228,6 +321,40 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
     if (ImGui::Button("Flee") && isPlayerTurn)
     {
         queueFlee();
+    }
+
+    if (playerClassId_ == "cleric")
+    {
+        if (ImGui::Button("Minor Heal (10 mana)") && isPlayerTurn)
+        {
+            queueSpell("cleric_heal");
+        }
+    }
+    else if (playerClassId_ == "wizard")
+    {
+        if (ImGui::Button("Shock Bolt (15 mana)") && isPlayerTurn)
+        {
+            queueSpell("wizard_nuke");
+        }
+    }
+    else if (playerClassId_ == "warrior")
+    {
+        if (ImGui::Button("Bash") && isPlayerTurn)
+        {
+            queueAbility("warrior_bash");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Kick") && isPlayerTurn)
+        {
+            queueAbility("warrior_kick");
+        }
+    }
+    else if (playerClassId_ == "rogue")
+    {
+        if (ImGui::Button("Backstab") && isPlayerTurn)
+        {
+            queueAbility("rogue_backstab");
+        }
     }
 
     if (!isPlayerTurn)

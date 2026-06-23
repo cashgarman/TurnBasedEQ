@@ -31,11 +31,14 @@ public:
     uint32_t combatId() const { return combatId_; }
     uint32_t playerCombatSlot() const { return playerCombatSlot_; }
     uint32_t selectedTargetSlot() const { return selectedTargetSlot_; }
+    const std::string& playerClassId() const { return playerClassId_; }
 
     void setPlayerCombatSlot(uint32_t slot) { playerCombatSlot_ = slot; }
     void queueMelee();
     void queueDefend();
     void queueFlee();
+    void queueSpell(const std::string& spellId);
+    void queueAbility(const std::string& abilityId);
     bool consumePendingAction(net::SubmitActionPayload& outAction);
     void draw(tbeq::ui::GameWindow& window, bool& visible, int displayWidth, int displayHeight);
 
@@ -46,6 +49,8 @@ private:
         Melee = 1,
         Defend = 2,
         Flee = 3,
+        Spell = 4,
+        Ability = 5,
     };
 
     bool active_ = false;
@@ -58,6 +63,9 @@ private:
     uint16_t playerMaxHp_ = 0;
     uint16_t playerMana_ = 0;
     uint16_t playerMaxMana_ = 0;
+    std::string playerClassId_;
+    std::string pendingSpellId_;
+    std::string pendingAbilityId_;
     std::vector<net::CombatParticipantPayload> participants_;
     std::vector<uint32_t> turnOrder_;
     std::deque<std::string> combatLog_;

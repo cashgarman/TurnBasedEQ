@@ -16,5 +16,53 @@
     "category": "melee_weapon",
     "displayName": "1H Slashing",
     "description": "Skill with one-handed slashing weapons."
+  },
+  {
+    "id": "1h_pierce",
+    "category": "melee_weapon",
+    "displayName": "1H Piercing",
+    "description": "Skill with one-handed piercing weapons."
+  },
+  {
+    "id": "1h_blunt",
+    "category": "melee_weapon",
+    "displayName": "1H Blunt",
+    "description": "Skill with one-handed blunt weapons."
+  },
+  {
+    "id": "bash",
+    "category": "combat_maneuvers",
+    "displayName": "Bash",
+    "description": "Stun opponents with shield or weapon bash."
+  },
+  {
+    "id": "kick",
+    "category": "combat_maneuvers",
+    "displayName": "Kick",
+    "description": "Kick opponents to snare them."
+  },
+  {
+    "id": "alteration",
+    "category": "casting",
+    "displayName": "Alteration",
+    "description": "Improves heal spells and reduces resist."
+  },
+  {
+    "id": "evocation",
+    "category": "casting",
+    "displayName": "Evocation",
+    "description": "Improves direct damage spells."
+  },
+  {
+    "id": "channeling",
+    "category": "casting",
+    "displayName": "Channeling",
+    "description": "Reduces spell fizzle chance."
+  },
+  {
+    "id": "meditate",
+    "category": "casting_support",
+    "displayName": "Meditate",
+    "description": "Out-of-combat mana regeneration."
   }
 ]

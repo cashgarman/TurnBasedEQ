@@ -42,6 +42,36 @@ public:
         int32_t livingEnemyCount,
         std::mt19937& rng) const;
 
+    bool rollChanneling(uint16_t channelingSkill, std::mt19937& rng) const;
+
+    bool rollSpellResist(
+        uint16_t casterSchoolSkill,
+        uint16_t targetLevel,
+        std::mt19937& rng) const;
+
+    bool rollManeuver(
+        uint16_t maneuverSkill,
+        uint16_t targetLevel,
+        std::mt19937& rng) const;
+
+    int32_t calculateSpellDamage(
+        int32_t baseValue,
+        uint16_t schoolSkill,
+        uint16_t casterLevel) const;
+
+    int32_t calculateHealAmount(
+        int32_t baseValue,
+        uint16_t schoolSkill,
+        uint16_t casterLevel) const;
+
+    int32_t calculateAbilityDamage(
+        int32_t baseValue,
+        uint16_t linkedSkillLevel,
+        uint16_t offenseSkill,
+        uint16_t attackerLevel) const;
+
+    uint16_t meditateManaGain(uint16_t meditateSkill, uint16_t maxMana) const;
+
     uint32_t combatSkillXpGain(bool hit) const;
 
 private:

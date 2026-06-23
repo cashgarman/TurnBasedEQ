@@ -3,28 +3,32 @@
     "id": "warrior",
     "name": "Warrior",
     "resourcePool": "endurance",
-    "skillUnlocks": [],
+    "spellUnlocks": [],
+    "abilityUnlocks": ["warrior_bash", "warrior_kick"],
     "skillCapsRef": "warrior"
   },
   {
     "id": "cleric",
     "name": "Cleric",
     "resourcePool": "mana",
-    "skillUnlocks": [],
+    "spellUnlocks": ["cleric_heal"],
+    "abilityUnlocks": [],
     "skillCapsRef": "cleric"
   },
   {
     "id": "wizard",
     "name": "Wizard",
     "resourcePool": "mana",
-    "skillUnlocks": [],
+    "spellUnlocks": ["wizard_nuke"],
+    "abilityUnlocks": [],
     "skillCapsRef": "wizard"
   },
   {
     "id": "rogue",
     "name": "Rogue",
     "resourcePool": "endurance",
-    "skillUnlocks": [],
+    "spellUnlocks": [],
+    "abilityUnlocks": ["rogue_backstab"],
     "skillCapsRef": "rogue"
   }
 ]

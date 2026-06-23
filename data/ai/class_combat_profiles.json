@@ -1,0 +1,28 @@
+{
+  "cleric": {
+    "healThreshold": 0.65,
+    "nukeThreshold": 0.0,
+    "fleeHpPercent": 0.15,
+    "preferredHealSpell": "cleric_heal",
+    "preferredNukeSpell": ""
+  },
+  "wizard": {
+    "healThreshold": 0.0,
+    "nukeThreshold": 0.5,
+    "fleeHpPercent": 0.2,
+    "preferredHealSpell": "",
+    "preferredNukeSpell": "wizard_nuke"
+  },
+  "warrior": {
+    "healThreshold": 0.0,
+    "nukeThreshold": 0.0,
+    "fleeHpPercent": 0.1,
+    "preferredAbility": "warrior_bash"
+  },
+  "rogue": {
+    "healThreshold": 0.0,
+    "nukeThreshold": 0.0,
+    "fleeHpPercent": 0.15,
+    "preferredAbility": "rogue_backstab"
+  }
+}
