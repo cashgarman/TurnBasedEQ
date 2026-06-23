@@ -1,0 +1,23 @@
+[
+  {
+    "id": "human",
+    "name": "Human",
+    "allowedClasses": ["warrior", "cleric", "wizard", "rogue"],
+    "startZone": "starter_city",
+    "statMods": {"str": 0, "sta": 0, "agi": 0, "dex": 0, "wis": 0, "int": 0, "cha": 0}
+  },
+  {
+    "id": "wood_elf",
+    "name": "Wood Elf",
+    "allowedClasses": ["warrior", "cleric", "wizard", "rogue"],
+    "startZone": "starter_city",
+    "statMods": {"str": -5, "sta": -5, "agi": 5, "dex": 5, "wis": 0, "int": 0, "cha": 0}
+  },
+  {
+    "id": "dwarf",
+    "name": "Dwarf",
+    "allowedClasses": ["warrior", "cleric", "rogue"],
+    "startZone": "starter_city",
+    "statMods": {"str": 5, "sta": 5, "agi": -5, "dex": 0, "wis": 0, "int": 0, "cha": -5}
+  }
+]

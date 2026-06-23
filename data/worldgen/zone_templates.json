@@ -1,0 +1,19 @@
+{
+  "city": {
+    "width": 64,
+    "height": 64,
+    "merchantSlots": 2,
+    "lorekeeperSlots": 3
+  },
+  "hunting": {
+    "width": 128,
+    "height": 128,
+    "spawnCampCount": 4
+  },
+  "dungeon": {
+    "width": 48,
+    "height": 48,
+    "roomCount": 12,
+    "bossRoomDepth": 8
+  }
+}

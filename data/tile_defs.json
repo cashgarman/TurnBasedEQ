@@ -1,0 +1,9 @@
+[
+  {"id": "grass", "category": "grass", "collision": "walkable", "animation": "cycle", "autotileGroup": "grass"},
+  {"id": "dirt", "category": "dirt", "collision": "walkable", "animation": "none", "autotileGroup": "dirt"},
+  {"id": "shallow_water", "category": "water", "collision": "water", "animation": "cycle", "autotileGroup": "water"},
+  {"id": "stone_floor", "category": "stone", "collision": "walkable", "animation": "none", "autotileGroup": "stone"},
+  {"id": "stone_wall", "category": "stone", "collision": "blocked", "animation": "none", "autotileGroup": "wall"},
+  {"id": "cobble", "category": "cobble", "collision": "walkable", "animation": "none", "autotileGroup": "cobble"},
+  {"id": "portal_pad", "category": "portal", "collision": "walkable", "animation": "cycle", "autotileGroup": "portal"}
+]

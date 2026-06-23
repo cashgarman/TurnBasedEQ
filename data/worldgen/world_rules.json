@@ -1,0 +1,9 @@
+{
+  "zoneRoles": ["starter_city", "hunting", "dungeon"],
+  "validatorRules": {
+    "requireConnectedGraph": true,
+    "minWalkableRatio": 0.35,
+    "maxSingleTileChokeCount": 4
+  },
+  "starterHub": "starter_city"
+}

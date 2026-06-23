@@ -1,0 +1,18 @@
+[
+  {
+    "id": "starter_city",
+    "masterSeed": 1001,
+    "palette": {"base": "#5a6e5a", "accent": "#8aa67a", "shadow": "#2f3b2f", "highlight": "#b8d8a0"},
+    "noiseScale": 0.12,
+    "hueShift": 0,
+    "saturation": 0.9
+  },
+  {
+    "id": "hunting_grounds",
+    "masterSeed": 2002,
+    "palette": {"base": "#4a6741", "accent": "#7f9960", "shadow": "#243020", "highlight": "#a8c878"},
+    "noiseScale": 0.18,
+    "hueShift": 4,
+    "saturation": 0.85
+  }
+]
