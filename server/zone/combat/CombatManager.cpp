@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include "tbeq/net/PacketSerializer.hpp"
+#include "tbeq/skills/Progression.hpp"
 
 namespace tbeq::server
 {
@@ -15,17 +16,22 @@ CombatManager::CombatManager(
     const content::MobCatalog& mobCatalog,
     const content::SpellCatalog& spellCatalog,
     const content::AbilityCatalog& abilityCatalog,
+    const combat::BossScriptCatalog& bossScripts,
+    const content::SkillCatalog& skillCatalog,
     const ai::ClassCombatProfileCatalog& aiProfiles,
     FindPlayerFn findPlayer,
     FindAiCompanionsFn findAiCompanions,
     BroadcastFn broadcast,
     PersistStateFn persistState,
-    SyncInventoryFn syncInventory)
+    SyncInventoryFn syncInventory,
+    SyncProgressFn syncProgress)
     : io_(io)
     , skillResolver_(skillResolver)
     , mobCatalog_(mobCatalog)
     , spellCatalog_(spellCatalog)
     , abilityCatalog_(abilityCatalog)
+    , bossScripts_(bossScripts)
+    , skillCatalog_(skillCatalog)
     , classCombatBrain_(aiProfiles, spellCatalog, abilityCatalog)
     , partyMemberAi_(classCombatBrain_)
     , findPlayer_(std::move(findPlayer))
@@ -33,6 +39,7 @@ CombatManager::CombatManager(
     , broadcast_(std::move(broadcast))
     , persistState_(std::move(persistState))
     , syncInventory_(std::move(syncInventory))
+    , syncProgress_(std::move(syncProgress))
     , rng_(std::random_device{}())
 {
 }
@@ -154,6 +161,50 @@ void CombatManager::syncPlayerFromParticipant(const combat::CombatParticipant& p
     }
 }
 
+void CombatManager::applySkillXp(PlayerView& player, const std::string& skillId, uint32_t amount)
+{
+    if (player.state == nullptr || amount == 0)
+    {
+        return;
+    }
+
+    const uint16_t cap = skillResolver_.getCap(player.classId, skillId, player.level);
+    if (cap == 0)
+    {
+        return;
+    }
+
+    auto& progress = player.state->skillOrDefault(skillId);
+    const uint16_t oldLevel = progress.level;
+    if (!skillResolver_.applyGain(progress, amount, cap))
+    {
+        return;
+    }
+
+    if (progress.level <= oldLevel)
+    {
+        return;
+    }
+
+    std::string skillLabel = skillId;
+    if (const tbeq::SkillDef* skillDef = skillCatalog_.findSkill(skillId))
+    {
+        skillLabel = skillDef->displayName;
+    }
+
+    net::SkillGainPayload gain;
+    gain.skillId = skillId;
+    gain.oldLevel = oldLevel;
+    gain.newLevel = progress.level;
+    gain.message = "Your " + skillLabel + " skill has increased! (" + std::to_string(oldLevel)
+        + " -> " + std::to_string(progress.level) + ")";
+    broadcast_({player.characterId}, net::ClientPacketType::SkillGain, net::serialize(gain));
+    if (syncProgress_)
+    {
+        syncProgress_(player.characterId);
+    }
+}
+
 void CombatManager::applySkillXp(PlayerView& player, bool hit)
 {
     if (player.state == nullptr)
@@ -162,27 +213,8 @@ void CombatManager::applySkillXp(PlayerView& player, bool hit)
     }
 
     const uint32_t xpGain = skillResolver_.combatSkillXpGain(hit);
-    const uint16_t cap = skillResolver_.getCap(player.classId, "offense", player.level);
-
-    const auto applyOne = [&](const std::string& skillId)
-    {
-        auto& progress = player.state->skillOrDefault(skillId);
-        const uint16_t oldLevel = progress.level;
-        skillResolver_.applyGain(progress, xpGain, cap);
-        if (progress.level > oldLevel)
-        {
-            net::SkillGainPayload gain;
-            gain.skillId = skillId;
-            gain.oldLevel = oldLevel;
-            gain.newLevel = progress.level;
-            gain.message = "Your " + skillId + " skill has increased! (" + std::to_string(oldLevel)
-                + " -> " + std::to_string(progress.level) + ")";
-            broadcast_({player.characterId}, net::ClientPacketType::SkillGain, net::serialize(gain));
-        }
-    };
-
-    applyOne("offense");
-    applyOne(player.state->equippedWeaponSkill);
+    applySkillXp(player, "offense", xpGain);
+    applySkillXp(player, player.state->equippedWeaponSkill, xpGain);
 }
 
 void CombatManager::grantLoot(PlayerView& player, const std::vector<combat::CombatLootRoll>& loot)
@@ -338,6 +370,7 @@ bool CombatManager::startDebugCombat(PlayerView& player, const std::vector<std::
         mobCatalog_,
         spellCatalog_,
         abilityCatalog_,
+        bossScripts_,
         rng_);
 
     addPlayerToCombat(activeCombat, player, true, false);
@@ -405,6 +438,28 @@ void CombatManager::broadcastEvents(ActiveCombat& combat, const std::vector<comb
                 if (PlayerView* actor = findPlayer_(slotIt->second))
                 {
                     applySkillXp(*actor, false);
+                }
+            }
+        }
+        else if (event.type == combat::CombatEventType::Defend)
+        {
+            const auto slotIt = combat.slotToCharacterId.find(event.actorSlot);
+            if (slotIt != combat.slotToCharacterId.end())
+            {
+                if (PlayerView* actor = findPlayer_(slotIt->second))
+                {
+                    applySkillXp(*actor, "defense", skillResolver_.defendSkillXpGain());
+                }
+            }
+        }
+        else if (event.type == combat::CombatEventType::AbilityUsed && event.detail == "warrior_taunt")
+        {
+            const auto slotIt = combat.slotToCharacterId.find(event.actorSlot);
+            if (slotIt != combat.slotToCharacterId.end())
+            {
+                if (PlayerView* actor = findPlayer_(slotIt->second))
+                {
+                    applySkillXp(*actor, "taunt", skillResolver_.combatSkillXpGain(true));
                 }
             }
         }
@@ -649,12 +704,30 @@ void CombatManager::finishCombat(ActiveCombat& combat)
     const auto outcome = combat.instance->outcome();
     if (outcome == combat::CombatOutcome::Victory)
     {
+        const uint32_t xpReward = combat.instance->mobExperienceReward();
         for (const auto& characterId : combat.playerCharacterIds)
         {
             if (PlayerView* player = findPlayer_(characterId))
             {
                 const auto loot = combat.instance->rollLoot();
                 grantLoot(*player, loot);
+
+                if (player->state != nullptr && xpReward > 0)
+                {
+                    const auto levelResult = progression::grantCharacterExperience(*player->state, xpReward);
+                    player->level = player->state->level;
+                    if (levelResult.leveledUp)
+                    {
+                        net::LevelUpPayload levelUp;
+                        levelUp.oldLevel = levelResult.oldLevel;
+                        levelUp.newLevel = levelResult.newLevel;
+                        levelUp.experienceGranted = xpReward;
+                        levelUp.message = "You have gained a level! (" + std::to_string(levelResult.oldLevel)
+                            + " -> " + std::to_string(levelResult.newLevel) + ")";
+                        broadcast_({characterId}, net::ClientPacketType::LevelUp, net::serialize(levelUp));
+                    }
+                }
+
                 if (player->state != nullptr)
                 {
                     persistState_(characterId, *player->state);
@@ -666,6 +739,11 @@ void CombatManager::finishCombat(ActiveCombat& combat)
                 vitals.mana = player->state->mana;
                 vitals.maxMana = player->state->maxMana;
                 broadcast_({characterId}, net::ClientPacketType::CharacterVitals, net::serialize(vitals));
+
+                if (syncProgress_)
+                {
+                    syncProgress_(characterId);
+                }
             }
         }
     }
@@ -852,6 +930,18 @@ void CombatManager::unlockAllSpells(const std::string& characterId)
         }
         player->state->unlockAllClassContent(spellIds, abilityIds);
         persistState_(characterId, *player->state);
+    }
+}
+
+void CombatManager::grantSkillXp(const std::string& characterId, const std::string& skillId, uint32_t amount)
+{
+    if (PlayerView* player = findPlayer_(characterId))
+    {
+        applySkillXp(*player, skillId, amount);
+        if (player->state != nullptr)
+        {
+            persistState_(characterId, *player->state);
+        }
     }
 }
 

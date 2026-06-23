@@ -1,68 +1,48 @@
 [
-  {
-    "id": "offense",
-    "category": "combat_fundamentals",
-    "displayName": "Offense",
-    "description": "Improves melee hit chance and damage."
-  },
-  {
-    "id": "defense",
-    "category": "combat_fundamentals",
-    "displayName": "Defense",
-    "description": "Improves avoidance and flee success."
-  },
-  {
-    "id": "1h_slash",
-    "category": "melee_weapon",
-    "displayName": "1H Slashing",
-    "description": "Skill with one-handed slashing weapons."
-  },
-  {
-    "id": "1h_pierce",
-    "category": "melee_weapon",
-    "displayName": "1H Piercing",
-    "description": "Skill with one-handed piercing weapons."
-  },
-  {
-    "id": "1h_blunt",
-    "category": "melee_weapon",
-    "displayName": "1H Blunt",
-    "description": "Skill with one-handed blunt weapons."
-  },
-  {
-    "id": "bash",
-    "category": "combat_maneuvers",
-    "displayName": "Bash",
-    "description": "Stun opponents with shield or weapon bash."
-  },
-  {
-    "id": "kick",
-    "category": "combat_maneuvers",
-    "displayName": "Kick",
-    "description": "Kick opponents to snare them."
-  },
-  {
-    "id": "alteration",
-    "category": "casting",
-    "displayName": "Alteration",
-    "description": "Improves heal spells and reduces resist."
-  },
-  {
-    "id": "evocation",
-    "category": "casting",
-    "displayName": "Evocation",
-    "description": "Improves direct damage spells."
-  },
-  {
-    "id": "channeling",
-    "category": "casting",
-    "displayName": "Channeling",
-    "description": "Reduces spell fizzle chance."
-  },
-  {
-    "id": "meditate",
-    "category": "casting_support",
-    "displayName": "Meditate",
-    "description": "Out-of-combat mana regeneration."
-  }
+  { "id": "offense", "category": "combat_fundamentals", "displayName": "Offense", "description": "Improves melee hit chance and damage." },
+  { "id": "defense", "category": "combat_fundamentals", "displayName": "Defense", "description": "Improves avoidance, blocking, and flee success." },
+  { "id": "dual_wield", "category": "combat_fundamentals", "displayName": "Dual Wield", "description": "Allows equipping an off-hand weapon and extra attacks." },
+  { "id": "double_attack", "category": "combat_fundamentals", "displayName": "Double Attack", "description": "Chance for an extra melee swing each turn." },
+  { "id": "triple_attack", "category": "combat_fundamentals", "displayName": "Triple Attack", "description": "Chance for a third melee swing at high skill." },
+  { "id": "1h_slash", "category": "melee_weapon", "displayName": "1H Slashing", "description": "Skill with one-handed slashing weapons." },
+  { "id": "1h_pierce", "category": "melee_weapon", "displayName": "1H Piercing", "description": "Skill with one-handed piercing weapons." },
+  { "id": "1h_blunt", "category": "melee_weapon", "displayName": "1H Blunt", "description": "Skill with one-handed blunt weapons." },
+  { "id": "2h_slash", "category": "melee_weapon", "displayName": "2H Slashing", "description": "Skill with two-handed slashing weapons." },
+  { "id": "2h_pierce", "category": "melee_weapon", "displayName": "2H Piercing", "description": "Skill with two-handed piercing weapons." },
+  { "id": "2h_blunt", "category": "melee_weapon", "displayName": "2H Blunt", "description": "Skill with two-handed blunt weapons." },
+  { "id": "archery", "category": "melee_weapon", "displayName": "Archery", "description": "Skill with bows and ranged archery." },
+  { "id": "throwing", "category": "melee_weapon", "displayName": "Throwing", "description": "Skill with thrown weapons." },
+  { "id": "bash", "category": "combat_maneuvers", "displayName": "Bash", "description": "Stun opponents with shield or weapon bash." },
+  { "id": "kick", "category": "combat_maneuvers", "displayName": "Kick", "description": "Kick opponents to snare them." },
+  { "id": "taunt", "category": "combat_maneuvers", "displayName": "Taunt", "description": "Draw enemy attention; required for tanking bosses." },
+  { "id": "disarm", "category": "combat_maneuvers", "displayName": "Disarm", "description": "Attempt to disarm an opponent." },
+  { "id": "riposte", "category": "combat_maneuvers", "displayName": "Riposte", "description": "Counter-attack after a successful block." },
+  { "id": "block", "category": "combat_maneuvers", "displayName": "Block", "description": "Mitigate incoming melee damage while defending." },
+  { "id": "dodge", "category": "combat_maneuvers", "displayName": "Dodge", "description": "Avoid incoming attacks entirely." },
+  { "id": "abjuration", "category": "casting", "displayName": "Abjuration", "description": "Improves protective and warding magic." },
+  { "id": "alteration", "category": "casting", "displayName": "Alteration", "description": "Improves heal spells and reduces resist." },
+  { "id": "conjuration", "category": "casting", "displayName": "Conjuration", "description": "Improves summoning and conjured effects." },
+  { "id": "divination", "category": "casting", "displayName": "Divination", "description": "Improves detection and insight spells." },
+  { "id": "evocation", "category": "casting", "displayName": "Evocation", "description": "Improves direct damage spells." },
+  { "id": "channeling", "category": "casting", "displayName": "Channeling", "description": "Reduces spell fizzle chance." },
+  { "id": "meditate", "category": "casting_support", "displayName": "Meditate", "description": "Out-of-combat mana regeneration." },
+  { "id": "specialize_evocation", "category": "casting_support", "displayName": "Specialize Evocation", "description": "Reduces evocation spell mana costs." },
+  { "id": "hide", "category": "stealth_utility", "displayName": "Hide", "description": "Conceal yourself from nearby enemies." },
+  { "id": "sneak", "category": "stealth_utility", "displayName": "Sneak", "description": "Move quietly while stealthed." },
+  { "id": "pick_lock", "category": "stealth_utility", "displayName": "Pick Lock", "description": "Open locked doors and chests." },
+  { "id": "pick_pocket", "category": "stealth_utility", "displayName": "Pick Pocket", "description": "Steal items from NPC targets." },
+  { "id": "sense_traps", "category": "stealth_utility", "displayName": "Sense Traps", "description": "Detect traps before triggering them." },
+  { "id": "tracking", "category": "exploration", "displayName": "Tracking", "description": "Reveal nearby spawns on the minimap." },
+  { "id": "forage", "category": "exploration", "displayName": "Forage", "description": "Find foraged items in the wild." },
+  { "id": "sense_heading", "category": "exploration", "displayName": "Sense Heading", "description": "Reduce lost direction penalties." },
+  { "id": "bind_wound", "category": "support", "displayName": "Bind Wound", "description": "Out-of-combat HP recovery." },
+  { "id": "intimidation", "category": "support", "displayName": "Intimidation", "description": "Social aggro and emote checks." },
+  { "id": "blacksmithing", "category": "crafting", "displayName": "Blacksmithing", "description": "Craft metal weapons and armor." },
+  { "id": "tailoring", "category": "crafting", "displayName": "Tailoring", "description": "Craft cloth armor and bags." },
+  { "id": "fletching", "category": "crafting", "displayName": "Fletching", "description": "Craft bows, arrows, and bolts." },
+  { "id": "brewing", "category": "crafting", "displayName": "Brewing", "description": "Brew potions and drinks." },
+  { "id": "baking", "category": "crafting", "displayName": "Baking", "description": "Bake food that grants buffs." },
+  { "id": "pottery", "category": "crafting", "displayName": "Pottery", "description": "Shape clay into useful items." },
+  { "id": "jewelcraft", "category": "crafting", "displayName": "Jewel Craft", "description": "Cut gems and craft jewelry." },
+  { "id": "merchant", "category": "trade", "displayName": "Merchant", "description": "Improves vendor buy and sell prices." }
 ]

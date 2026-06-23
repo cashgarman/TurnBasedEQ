@@ -22,8 +22,10 @@ void applyClassSkills(CharacterState& state, const std::string& classId, uint16_
         state.skills["1h_slash"] = {baseSkill, 0};
         state.skills["bash"] = {baseSkill, 0};
         state.skills["kick"] = {baseSkill, 0};
+        state.skills["taunt"] = {static_cast<uint16_t>(std::max<uint16_t>(1, baseSkill - 2)), 0};
+        state.skills["block"] = {baseSkill, 0};
         state.equippedWeaponSkill = "1h_slash";
-        state.unlockedAbilities = {"warrior_bash", "warrior_kick"};
+        state.unlockedAbilities = {"warrior_bash", "warrior_kick", "warrior_taunt"};
     }
     else if (classId == "cleric")
     {
@@ -47,7 +49,9 @@ void applyClassSkills(CharacterState& state, const std::string& classId, uint16_
     else if (classId == "rogue")
     {
         state.skills["1h_pierce"] = {baseSkill, 0};
-        state.skills["offense"] = {static_cast<uint16_t>(baseSkill + 2), 0};
+        state.skills["hide"] = {baseSkill, 0};
+        state.skills["sneak"] = {baseSkill, 0};
+        state.skills["pick_lock"] = {static_cast<uint16_t>(baseSkill / 2), 0};
         state.equippedWeaponSkill = "1h_pierce";
         state.unlockedAbilities = {"rogue_backstab"};
     }
@@ -104,6 +108,10 @@ CharacterState CharacterState::fromJson(const std::string& json)
         if (parsed.contains("level"))
         {
             state.level = parsed["level"].get<uint16_t>();
+        }
+        if (parsed.contains("experience"))
+        {
+            state.experience = parsed["experience"].get<uint32_t>();
         }
         if (parsed.contains("hp"))
         {
@@ -204,6 +212,7 @@ std::string CharacterState::toJson() const
     nlohmann::json parsed;
     parsed["classId"] = classId;
     parsed["level"] = level;
+    parsed["experience"] = experience;
     parsed["hp"] = hp;
     parsed["maxHp"] = maxHp;
     parsed["mana"] = mana;

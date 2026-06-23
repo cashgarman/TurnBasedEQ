@@ -2,33 +2,51 @@
 
 #include <algorithm>
 
+#include "tbeq/skills/Progression.hpp"
+
 namespace tbeq
 {
 
+void SkillResolver::setSkillCapCatalog(const content::SkillCapCatalog* catalog)
+{
+    skillCapCatalog_ = catalog;
+}
+
 uint16_t SkillResolver::getCap(const std::string& classId, const std::string& skillId, uint16_t characterLevel) const
 {
-    (void)classId;
-    (void)skillId;
+    if (skillCapCatalog_ != nullptr)
+    {
+        return skillCapCatalog_->getCap(classId, skillId, characterLevel);
+    }
     return static_cast<uint16_t>(5 * characterLevel);
 }
 
 bool SkillResolver::canUseSkill(const SkillProgress& progress, uint16_t cap) const
 {
-    return progress.level <= cap;
+    return cap > 0 && progress.level <= cap;
 }
 
-void SkillResolver::applyGain(SkillProgress& progress, uint32_t amount, uint16_t cap)
+bool SkillResolver::applyGain(SkillProgress& progress, uint32_t amount, uint16_t cap)
 {
-    if (progress.level >= cap)
+    if (cap == 0 || progress.level >= cap)
     {
-        return;
+        return false;
     }
+
     progress.experience += amount;
-    while (progress.experience >= 100 && progress.level < cap)
+    bool leveled = false;
+    while (progress.level < cap)
     {
-        progress.experience -= 100;
+        const uint32_t required = progression::skillExperienceToLevelUp(progress.level);
+        if (progress.experience < required)
+        {
+            break;
+        }
+        progress.experience -= required;
         ++progress.level;
+        leveled = true;
     }
+    return leveled;
 }
 
 bool SkillResolver::rollMeleeHit(
@@ -51,7 +69,8 @@ int32_t SkillResolver::calculateMeleeDamage(
     uint16_t weaponSkill,
     uint16_t offenseSkill,
     uint16_t targetDefense,
-    std::mt19937& rng) const
+    std::mt19937& rng,
+    float damageMultiplier) const
 {
     std::uniform_int_distribution<int32_t> dist(1, 6);
     const int32_t base = 8 + static_cast<int32_t>(attackerLevel)
@@ -59,7 +78,8 @@ int32_t SkillResolver::calculateMeleeDamage(
         + static_cast<int32_t>(offenseSkill) / 15
         + dist(rng);
     const int32_t mitigation = static_cast<int32_t>(targetDefense) / 20;
-    return std::max(1, base - mitigation);
+    const int32_t scaled = static_cast<int32_t>(static_cast<float>(std::max(1, base - mitigation)) * damageMultiplier);
+    return std::max(1, scaled);
 }
 
 bool SkillResolver::rollFlee(
@@ -147,6 +167,28 @@ uint16_t SkillResolver::meditateManaGain(uint16_t meditateSkill, uint16_t maxMan
 uint32_t SkillResolver::combatSkillXpGain(bool hit) const
 {
     return hit ? 8u : 4u;
+}
+
+uint32_t SkillResolver::defendSkillXpGain() const
+{
+    return 6u;
+}
+
+uint32_t SkillResolver::activitySkillXpGain(const std::string& activityId) const
+{
+    if (activityId == "forage")
+    {
+        return 10u;
+    }
+    if (activityId == "pick_lock")
+    {
+        return 12u;
+    }
+    if (activityId == "meditate")
+    {
+        return 5u;
+    }
+    return 6u;
 }
 
 } // namespace tbeq

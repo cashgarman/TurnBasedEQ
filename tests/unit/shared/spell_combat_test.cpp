@@ -5,6 +5,7 @@
 
 #include "tbeq/ai/ClassCombatBrain.hpp"
 #include "tbeq/ai/ClassCombatProfile.hpp"
+#include "tbeq/combat/BossScriptCatalog.hpp"
 #include "tbeq/combat/CombatInstance.hpp"
 #include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
@@ -78,7 +79,8 @@ TEST_CASE("cleric heal spell restores ally hp", "[combat][spells]")
     REQUIRE(spells.loadFromFile(kDataRoot / "spells.json"));
 
     std::mt19937 rng(99);
-    tbeq::combat::CombatInstance combat(10, resolver, mobs, spells, abilities, rng);
+    tbeq::combat::BossScriptCatalog bossScripts;
+    tbeq::combat::CombatInstance combat(10, resolver, mobs, spells, abilities, bossScripts, rng);
 
     tbeq::CharacterState clericState = tbeq::CharacterState::createDefault("cleric", 5);
     clericState.skills["channeling"] = {100, 0};

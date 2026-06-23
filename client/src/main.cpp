@@ -36,8 +36,10 @@
 #include "ui/merchant/MerchantWindow.hpp"
 #include "ui/look/LookWindow.hpp"
 #include "ui/dialog/NpcDialogWindow.hpp"
+#include "ui/skills/SkillsWindow.hpp"
 #include "tbeq/content/MobCatalog.hpp"
 #include "tbeq/content/ItemCatalog.hpp"
+#include "tbeq/content/SkillCatalog.hpp"
 #include "render/TextureCache.hpp"
 #include "render/SpriteRenderer.hpp"
 
@@ -140,6 +142,7 @@ struct ClientApp
     tbeq::world::TileDefCatalog tileDefs;
     tbeq::content::ItemCatalog itemCatalog;
     tbeq::content::MobCatalog mobCatalog;
+    tbeq::content::SkillCatalog skillCatalog;
     tbeq::render::TileStyleCatalog styleCatalog;
     tbeq::render::EntitySpriteCatalog entitySpriteCatalog;
     std::unique_ptr<tbeq::client::TextureCache> textureCache;
@@ -165,16 +168,20 @@ struct ClientApp
     tbeq::ui::GameWindow merchantWindowPanel{"merchant", "Merchant", 400.0f, 340.0f};
     tbeq::ui::GameWindow lookWindowPanel{"look", "Look", 320.0f, 280.0f};
     tbeq::ui::GameWindow npcDialogWindowPanel{"npc_dialog", "NPC Dialog", 360.0f, 260.0f};
+    tbeq::ui::GameWindow skillsWindowPanel{"skills", "Skills", 420.0f, 360.0f};
     tbeq::client::CombatWindow combatWindow;
     tbeq::client::InventoryWindow inventoryWindow;
     tbeq::client::MerchantWindow merchantWindow;
     tbeq::client::LookWindow lookWindow;
     tbeq::client::NpcDialogWindow npcDialogWindow;
+    tbeq::client::SkillsWindow skillsWindow;
     bool combatVisible = false;
     bool inventoryVisible = false;
     bool merchantVisible = false;
     bool lookVisible = false;
     bool npcDialogVisible = false;
+    bool skillsVisible = false;
+    uint16_t hudLevel = 1;
     uint32_t hudGold = 0;
     uint16_t hudHp = 100;
     uint16_t hudMaxHp = 100;
@@ -283,6 +290,11 @@ struct ClientApp
             spdlog::error("Failed to load mobs.json");
             return false;
         }
+        if (!skillCatalog.loadFromFile(dataRoot / "skills.json"))
+        {
+            spdlog::error("Failed to load skills.json");
+            return false;
+        }
 
         textureCache = std::make_unique<tbeq::client::TextureCache>(renderer);
         spriteRenderer = std::make_unique<tbeq::client::SpriteRenderer>(*textureCache);
@@ -290,6 +302,7 @@ struct ClientApp
         inventoryWindow.setItemCatalog(&itemCatalog);
         merchantWindow.setItemCatalog(&itemCatalog);
         lookWindow.setItemCatalog(&itemCatalog);
+        skillsWindow.setSkillCatalog(&skillCatalog);
 
         tilemapRenderer = std::make_unique<tbeq::client::TilemapRenderer>(*spriteRenderer);
         entityRenderer = std::make_unique<tbeq::client::EntityRenderer>(*spriteRenderer);
@@ -302,6 +315,7 @@ struct ClientApp
         layoutManager.registerWindow(merchantWindowPanel);
         layoutManager.registerWindow(lookWindowPanel);
         layoutManager.registerWindow(npcDialogWindowPanel);
+        layoutManager.registerWindow(skillsWindowPanel);
 #if TBEQ_ENABLE_DEBUG_MENU
         layoutManager.registerWindow(debugWindow);
         debugWindow.state().visible = false;
@@ -736,7 +750,19 @@ struct ClientApp
         zoneClient->setSkillGainCallback([this](const tbeq::net::SkillGainPayload& gain)
         {
             combatWindow.applySkillGain(gain);
+            skillsWindow.applySkillGain(gain);
             chatLines.push_back("[System] " + gain.message);
+        });
+        zoneClient->setLevelUpCallback([this](const tbeq::net::LevelUpPayload& levelUp)
+        {
+            skillsWindow.applyLevelUp(levelUp);
+            hudLevel = levelUp.newLevel;
+            chatLines.push_back("[System] " + levelUp.message);
+        });
+        zoneClient->setSkillsSnapshotCallback([this](const tbeq::net::SkillsSnapshotPayload& snapshot)
+        {
+            skillsWindow.applySnapshot(snapshot);
+            hudLevel = snapshot.characterLevel;
         });
         zoneClient->setInventorySnapshotCallback([this](const tbeq::net::InventorySnapshotPayload& snapshot)
         {
@@ -919,6 +945,13 @@ struct ClientApp
         else if (state == ClientState::InZone && event.type == SDL_KEYDOWN && zoneClient != nullptr
             && !combatWindow.isActive() && !npcDialogVisible)
         {
+            if (event.key.keysym.sym == SDLK_k)
+            {
+                skillsVisible = !skillsVisible;
+                skillsWindowPanel.state().visible = skillsVisible;
+                layoutManager.markDirty();
+            }
+
             if (event.key.keysym.sym == SDLK_i)
             {
                 inventoryVisible = !inventoryVisible;
@@ -1223,9 +1256,10 @@ struct ClientApp
                 hudMaxHp > 0 ? static_cast<float>(hudHp) / static_cast<float>(hudMaxHp) : 0.0f,
                 ImVec2(-1.0f, 0.0f),
                 (std::to_string(hudHp) + " / " + std::to_string(hudMaxHp)).c_str());
+            ImGui::Text("Level: %u", hudLevel);
             ImGui::Text("Mana: %u / %u", hudMana, hudMaxMana);
             ImGui::Text("Gold: %u", hudGold);
-            ImGui::TextUnformatted("WASD move | I inventory | L look | N interact | P portal");
+            ImGui::TextUnformatted("WASD move | I inventory | K skills | L look | N interact | P portal");
         }
         if (hudWindow.syncFromImGui())
         {
@@ -1391,6 +1425,20 @@ struct ClientApp
 
         npcDialogWindow.draw(npcDialogWindowPanel, npcDialogVisible, width, height);
         if (npcDialogWindowPanel.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+
+        skillsWindow.draw(
+            skillsWindowPanel,
+            skillsVisible,
+            width,
+            height,
+            [this](const std::string& line)
+            {
+                chatLines.push_back(line);
+            });
+        if (skillsWindowPanel.syncFromImGui())
         {
             layoutManager.markDirty();
         }

@@ -28,6 +28,7 @@ struct CharacterState
     uint32_t gold = 200;
     std::string classId;
     uint16_t level = 1;
+    uint32_t experience = 0;
     std::unordered_map<std::string, SkillProgress> skills;
     std::vector<std::string> unlockedSpells;
     std::vector<std::string> unlockedAbilities;

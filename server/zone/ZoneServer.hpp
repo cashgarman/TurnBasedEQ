@@ -22,7 +22,9 @@
 #include "tbeq/core/CharacterState.hpp"
 #include "tbeq/core/Config.hpp"
 #include "tbeq/persistence/Database.hpp"
-#include "tbeq/skills/SkillResolver.hpp"
+#include "tbeq/combat/BossScriptCatalog.hpp"
+#include "tbeq/content/SkillCapCatalog.hpp"
+#include "tbeq/content/SkillCatalog.hpp"
 #include "tbeq/world/TileDefCatalog.hpp"
 #include "tbeq/world/ZoneGrid.hpp"
 
@@ -175,6 +177,9 @@ private:
 
     net::InventorySnapshotPayload buildInventorySnapshot(const CharacterState& state) const;
     void sendInventorySnapshot(const PlayerEntity& player);
+    net::SkillsSnapshotPayload buildSkillsSnapshot(const CharacterState& state) const;
+    void sendSkillsSnapshot(const PlayerEntity& player);
+    void applyActivitySkillGain(PlayerEntity& player, const std::string& skillId, const std::string& activityId);
     NpcEntity* findNpcByEntityId(uint32_t entityId);
     bool isNearNpc(const PlayerEntity& player, const NpcEntity& npc) const;
     bool tryEquipItem(PlayerEntity& player, const std::string& itemId, std::string& message);
@@ -189,6 +194,9 @@ private:
     AppConfig config_;
     DebugCommandHandler debugHandler_;
     SkillResolver skillResolver_;
+    content::SkillCapCatalog skillCapCatalog_;
+    content::SkillCatalog skillCatalog_;
+    combat::BossScriptCatalog bossScriptCatalog_;
     content::MobCatalog mobCatalog_;
     content::SpellCatalog spellCatalog_;
     content::AbilityCatalog abilityCatalog_;

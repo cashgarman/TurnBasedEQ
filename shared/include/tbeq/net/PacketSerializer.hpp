@@ -94,6 +94,8 @@ bool deserializeClientPacket(const SerializedPacket& packet, SubmitActionResultP
 bool deserializeClientPacket(const SerializedPacket& packet, CharacterVitalsPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, MeditateResultPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, SkillGainPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, LevelUpPayload& out);
+bool deserializeClientPacket(const SerializedPacket& packet, SkillsSnapshotPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, InventorySnapshotPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, EquipItemRequestPayload& out);
 bool deserializeClientPacket(const SerializedPacket& packet, EquipItemResultPayload& out);
@@ -162,6 +164,9 @@ ByteWriter serialize(const SubmitActionResultPayload& payload);
 ByteWriter serialize(const CharacterVitalsPayload& payload);
 ByteWriter serialize(const MeditateResultPayload& payload);
 ByteWriter serialize(const SkillGainPayload& payload);
+ByteWriter serialize(const LevelUpPayload& payload);
+ByteWriter serialize(const SkillEntryPayload& payload);
+ByteWriter serialize(const SkillsSnapshotPayload& payload);
 ByteWriter serialize(const InventoryEntryPayload& payload);
 ByteWriter serialize(const EquipmentEntryPayload& payload);
 ByteWriter serialize(const InventorySnapshotPayload& payload);

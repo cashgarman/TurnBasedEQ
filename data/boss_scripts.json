@@ -1,0 +1,21 @@
+{
+  "goblin_chief": {
+    "phases": [
+      {
+        "hpPercentMin": 51,
+        "targetMode": "lowest_hp",
+        "meleeWeight": 75,
+        "defendWeight": 25,
+        "damageMultiplier": 1.0
+      },
+      {
+        "hpPercentMin": 0,
+        "targetMode": "highest_threat",
+        "meleeWeight": 90,
+        "defendWeight": 10,
+        "damageMultiplier": 1.35,
+        "announce": "Goblin Chief enters a rage and focuses the tank!"
+      }
+    ]
+  }
+}

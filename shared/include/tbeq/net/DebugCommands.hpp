@@ -21,6 +21,10 @@ enum class DebugCommand : uint16_t
     SpawnAi = 16,
     GrantItem = 17,
     EquipItem = 18,
+    SetSkillLevel = 19,
+    MaxSkills = 20,
+    GrantExperience = 21,
+    PracticeSkill = 22,
     Unknown = 9999,
 };
 

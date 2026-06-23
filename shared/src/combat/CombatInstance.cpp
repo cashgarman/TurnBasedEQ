@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "tbeq/skills/Progression.hpp"
+
 namespace tbeq::combat
 {
 
@@ -74,12 +76,14 @@ CombatInstance::CombatInstance(
     const content::MobCatalog& mobCatalog,
     const content::SpellCatalog& spellCatalog,
     const content::AbilityCatalog& abilityCatalog,
+    const BossScriptCatalog& bossScripts,
     Rng& rng)
     : combatId_(combatId)
     , skillResolver_(skillResolver)
     , mobCatalog_(mobCatalog)
     , spellCatalog_(spellCatalog)
     , abilityCatalog_(abilityCatalog)
+    , bossScripts_(bossScripts)
     , rng_(rng)
 {
 }
@@ -184,7 +188,14 @@ void CombatInstance::addMob(const content::MobDef& mobDef)
     participant.offense = mobDef.offense;
     participant.defense = mobDef.defense;
     participant.agi = mobDef.agi;
+    participant.isNamed = mobDef.isNamed;
+    participant.isBoss = mobDef.isBoss;
+    participant.bossScriptId = mobDef.bossScriptId;
     participant.isPlayerControlled = false;
+    if (participant.isBoss)
+    {
+        updateBossPhase(participant);
+    }
     participants_.push_back(std::move(participant));
 }
 
@@ -378,15 +389,34 @@ CombatActionIntent CombatInstance::defaultPlayerAction(uint32_t actorSlot) const
 
 CombatActionType CombatInstance::chooseEnemyAction(uint32_t actorSlot) const
 {
-    (void)actorSlot;
+    const CombatParticipant* actor = participantBySlot(actorSlot);
+    if (actor == nullptr)
+    {
+        return CombatActionType::Defend;
+    }
+
     if (chooseEnemyTarget(actorSlot) == 0)
     {
         return CombatActionType::Defend;
     }
+
+    if (!actor->bossScriptId.empty())
+    {
+        if (const BossPhaseDef* phase = activeBossPhase(*actor))
+        {
+            const int32_t roll = rollRange(const_cast<Rng&>(rng_), 1, 100);
+            if (roll <= static_cast<int32_t>(phase->meleeWeight))
+            {
+                return CombatActionType::MeleeAttack;
+            }
+            return CombatActionType::Defend;
+        }
+    }
+
     return CombatActionType::MeleeAttack;
 }
 
-uint32_t CombatInstance::chooseEnemyTarget(uint32_t actorSlot) const
+uint32_t CombatInstance::chooseThreatTarget(uint32_t actorSlot, BossTargetMode mode) const
 {
     const CombatParticipant* actor = participantBySlot(actorSlot);
     if (actor == nullptr)
@@ -409,6 +439,27 @@ uint32_t CombatInstance::chooseEnemyTarget(uint32_t actorSlot) const
         return 0;
     }
 
+    if (mode == BossTargetMode::HighestThreat)
+    {
+        std::sort(candidates.begin(), candidates.end(), [this](const CombatParticipant* a, const CombatParticipant* b)
+        {
+            const int32_t threatA = threatByPlayerSlot_.count(a->slot) ? threatByPlayerSlot_.at(a->slot) : 0;
+            const int32_t threatB = threatByPlayerSlot_.count(b->slot) ? threatByPlayerSlot_.at(b->slot) : 0;
+            if (threatA != threatB)
+            {
+                return threatA > threatB;
+            }
+            return a->slot < b->slot;
+        });
+        return candidates.front()->slot;
+    }
+
+    if (mode == BossTargetMode::Random)
+    {
+        const size_t index = static_cast<size_t>(rollRange(const_cast<Rng&>(rng_), 0, static_cast<int32_t>(candidates.size()) - 1));
+        return candidates[index]->slot;
+    }
+
     std::sort(candidates.begin(), candidates.end(), [](const CombatParticipant* a, const CombatParticipant* b)
     {
         if (a->hp != b->hp)
@@ -417,14 +468,66 @@ uint32_t CombatInstance::chooseEnemyTarget(uint32_t actorSlot) const
         }
         return a->slot < b->slot;
     });
+    return candidates.front()->slot;
+}
 
-    if (rollRange(rng_, 1, 100) <= 70)
+uint32_t CombatInstance::chooseEnemyTarget(uint32_t actorSlot) const
+{
+    const CombatParticipant* actor = participantBySlot(actorSlot);
+    if (actor == nullptr)
     {
-        return candidates.front()->slot;
+        return 0;
     }
 
-    const size_t index = static_cast<size_t>(rollRange(rng_, 0, static_cast<int32_t>(candidates.size()) - 1));
-    return candidates[index]->slot;
+    BossTargetMode mode = BossTargetMode::LowestHp;
+    if (!actor->bossScriptId.empty())
+    {
+        if (const BossPhaseDef* phase = activeBossPhase(*actor))
+        {
+            mode = phase->targetMode;
+        }
+    }
+    else if (actor->isBoss)
+    {
+        mode = BossTargetMode::HighestThreat;
+    }
+
+    if (mode == BossTargetMode::LowestHp && actor->bossScriptId.empty())
+    {
+        std::vector<const CombatParticipant*> candidates;
+        for (const auto& participant : participants_)
+        {
+            if (!participant.isAlive || participant.side == actor->side)
+            {
+                continue;
+            }
+            candidates.push_back(&participant);
+        }
+
+        if (candidates.empty())
+        {
+            return 0;
+        }
+
+        std::sort(candidates.begin(), candidates.end(), [](const CombatParticipant* a, const CombatParticipant* b)
+        {
+            if (a->hp != b->hp)
+            {
+                return a->hp < b->hp;
+            }
+            return a->slot < b->slot;
+        });
+
+        if (rollRange(const_cast<Rng&>(rng_), 1, 100) <= 70)
+        {
+            return candidates.front()->slot;
+        }
+
+        const size_t index = static_cast<size_t>(rollRange(const_cast<Rng&>(rng_), 0, static_cast<int32_t>(candidates.size()) - 1));
+        return candidates[index]->slot;
+    }
+
+    return chooseThreatTarget(actorSlot, mode);
 }
 
 bool CombatInstance::isValidSpellTarget(
@@ -668,6 +771,33 @@ bool CombatInstance::resolveUseAbility(
 
     const uint16_t maneuverSkill = actor.skillLevel(ability->skillCheck);
 
+    if (ability->effect == content::AbilityEffectType::Taunt)
+    {
+        if (skillResolver_.rollManeuver(maneuverSkill, target.level, rng_))
+        {
+            applyTaunt(actor.slot);
+            CombatEvent event;
+            event.type = CombatEventType::AbilityUsed;
+            event.actorSlot = actor.slot;
+            event.targetSlot = target.slot;
+            event.detail = abilityId;
+            event.message = actor.name + " taunts " + target.name + ", drawing attention!";
+            pendingEvents_.push_back(std::move(event));
+        }
+        else
+        {
+            CombatEvent event;
+            event.type = CombatEventType::Miss;
+            event.actorSlot = actor.slot;
+            event.targetSlot = target.slot;
+            event.detail = abilityId;
+            event.message = actor.name + "'s taunt fails to provoke " + target.name + ".";
+            pendingEvents_.push_back(std::move(event));
+        }
+        checkOutcome();
+        return true;
+    }
+
     const int32_t damage = skillResolver_.calculateAbilityDamage(
         ability->baseValue,
         actor.skillLevel(ability->linkedSkill),
@@ -677,6 +807,11 @@ bool CombatInstance::resolveUseAbility(
     if (!target.godMode)
     {
         target.hp = static_cast<uint16_t>(std::max(0, static_cast<int32_t>(target.hp) - damage));
+    }
+
+    if (actor.side == CombatSide::Player && target.side == CombatSide::Enemy)
+    {
+        addThreat(actor.slot, damage + 8);
     }
 
     CombatEvent event;
@@ -738,16 +873,29 @@ bool CombatInstance::resolveMeleeAttack(CombatParticipant& actor, CombatParticip
         actor.weaponSkillLevel,
         actor.offenseSkillLevel,
         targetDefense,
-        rng_);
+        rng_,
+        actor.bossDamageMultiplier);
 
     if (target.isDefending)
     {
-        damage = std::max(1, damage / 2);
+        const uint16_t defenseSkill = target.defenseSkillLevel > 0 ? target.defenseSkillLevel : target.defense;
+        const int32_t mitigationBonus = static_cast<int32_t>(defenseSkill) / 25;
+        damage = std::max(1, (damage / 2) - mitigationBonus);
     }
 
     if (!target.godMode)
     {
         target.hp = static_cast<uint16_t>(std::max(0, static_cast<int32_t>(target.hp) - damage));
+    }
+
+    if (actor.side == CombatSide::Player && target.side == CombatSide::Enemy)
+    {
+        addThreat(actor.slot, damage + 10);
+    }
+
+    if (target.isBoss)
+    {
+        updateBossPhase(target);
     }
 
     CombatEvent event;
@@ -932,6 +1080,104 @@ std::vector<CombatLootRoll> CombatInstance::rollLoot() const
         }
     }
     return loot;
+}
+
+void CombatInstance::addThreat(uint32_t playerSlot, int32_t amount)
+{
+    if (amount <= 0)
+    {
+        return;
+    }
+    threatByPlayerSlot_[playerSlot] += amount;
+}
+
+void CombatInstance::applyTaunt(uint32_t playerSlot)
+{
+    int32_t maxThreat = 0;
+    for (const auto& [slot, threat] : threatByPlayerSlot_)
+    {
+        (void)slot;
+        maxThreat = std::max(maxThreat, threat);
+    }
+    threatByPlayerSlot_[playerSlot] = maxThreat + 100;
+}
+
+const BossPhaseDef* CombatInstance::activeBossPhase(const CombatParticipant& boss) const
+{
+    if (boss.bossScriptId.empty())
+    {
+        return nullptr;
+    }
+    const BossScriptDef* script = bossScripts_.findScript(boss.bossScriptId);
+    if (script == nullptr)
+    {
+        return nullptr;
+    }
+    return bossScripts_.activePhase(*script, boss.hp, boss.maxHp);
+}
+
+void CombatInstance::updateBossPhase(CombatParticipant& boss)
+{
+    if (boss.bossScriptId.empty())
+    {
+        return;
+    }
+
+    const BossScriptDef* script = bossScripts_.findScript(boss.bossScriptId);
+    if (script == nullptr)
+    {
+        return;
+    }
+
+    const BossPhaseDef* phase = bossScripts_.activePhase(*script, boss.hp, boss.maxHp);
+    if (phase == nullptr)
+    {
+        return;
+    }
+
+    const size_t phaseIndex = static_cast<size_t>(phase - script->phases.data());
+    if (phaseIndex != boss.activeBossPhaseIndex)
+    {
+        boss.activeBossPhaseIndex = static_cast<uint16_t>(phaseIndex);
+        boss.bossDamageMultiplier = phase->damageMultiplier;
+        if (!phase->announce.empty())
+        {
+            CombatEvent event;
+            event.type = CombatEventType::StatusApplied;
+            event.actorSlot = boss.slot;
+            event.message = phase->announce;
+            pendingEvents_.push_back(std::move(event));
+        }
+    }
+    else
+    {
+        boss.bossDamageMultiplier = phase->damageMultiplier;
+    }
+}
+
+uint32_t CombatInstance::mobExperienceReward() const
+{
+    uint32_t total = 0;
+    for (const auto& participant : participants_)
+    {
+        if (participant.side != CombatSide::Enemy)
+        {
+            continue;
+        }
+
+        const content::MobDef* mobDef = mobCatalog_.findMob(participant.mobId);
+        if (mobDef == nullptr)
+        {
+            continue;
+        }
+
+        total += progression::mobExperienceReward(
+            mobDef->level,
+            mobDef->hp,
+            mobDef->isNamed,
+            mobDef->isBoss);
+    }
+    return total;
 }
 
 } // namespace tbeq::combat

@@ -573,6 +573,45 @@ ByteWriter serialize(const SkillGainPayload& payload)
     return writer;
 }
 
+ByteWriter serialize(const LevelUpPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU16(payload.oldLevel);
+    writer.writeU16(payload.newLevel);
+    writer.writeU32(payload.experienceGranted);
+    writer.writeString(payload.message);
+    return writer;
+}
+
+ByteWriter serialize(const SkillEntryPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeString(payload.skillId);
+    writer.writeU16(payload.level);
+    writer.writeU32(payload.experience);
+    writer.writeU16(payload.cap);
+    return writer;
+}
+
+ByteWriter serialize(const SkillsSnapshotPayload& payload)
+{
+    ByteWriter writer;
+    writer.writeU16(payload.characterLevel);
+    writer.writeU32(payload.characterExperience);
+    writer.writeU32(payload.experienceToNextLevel);
+    writer.writeU32(static_cast<uint32_t>(payload.skills.size()));
+    for (const auto& skill : payload.skills)
+    {
+        const auto skillWriter = serialize(skill);
+        writer.writeU32(static_cast<uint32_t>(skillWriter.data().size()));
+        for (uint8_t byte : skillWriter.data())
+        {
+            writer.writeU8(byte);
+        }
+    }
+    return writer;
+}
+
 ByteWriter serialize(const InventoryEntryPayload& payload)
 {
     ByteWriter writer;
@@ -1491,6 +1530,68 @@ bool deserializeClientPacket(const SerializedPacket& packet, SkillGainPayload& o
         && reader.readU16(out.oldLevel)
         && reader.readU16(out.newLevel)
         && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, LevelUpPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::LevelUp))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    return reader.readU16(out.oldLevel)
+        && reader.readU16(out.newLevel)
+        && reader.readU32(out.experienceGranted)
+        && reader.readString(out.message);
+}
+
+bool deserializeClientPacket(const SerializedPacket& packet, SkillsSnapshotPayload& out)
+{
+    if (packet.header.packetType != static_cast<uint16_t>(ClientPacketType::SkillsSnapshot))
+    {
+        return false;
+    }
+
+    ByteReader reader(packet.payload);
+    uint32_t skillCount = 0;
+    if (!reader.readU16(out.characterLevel)
+        || !reader.readU32(out.characterExperience)
+        || !reader.readU32(out.experienceToNextLevel)
+        || !reader.readU32(skillCount))
+    {
+        return false;
+    }
+
+    out.skills.clear();
+    out.skills.reserve(skillCount);
+    for (uint32_t i = 0; i < skillCount; ++i)
+    {
+        uint32_t entrySize = 0;
+        if (!reader.readU32(entrySize))
+        {
+            return false;
+        }
+        std::vector<uint8_t> entryBytes(entrySize);
+        for (uint32_t b = 0; b < entrySize; ++b)
+        {
+            if (!reader.readU8(entryBytes[b]))
+            {
+                return false;
+            }
+        }
+        ByteReader entryReader(entryBytes);
+        SkillEntryPayload entry;
+        if (!entryReader.readString(entry.skillId)
+            || !entryReader.readU16(entry.level)
+            || !entryReader.readU32(entry.experience)
+            || !entryReader.readU16(entry.cap))
+        {
+            return false;
+        }
+        out.skills.push_back(std::move(entry));
+    }
+    return true;
 }
 
 bool deserializeClientPacket(const SerializedPacket& packet, InventorySnapshotPayload& out)

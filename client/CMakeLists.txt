@@ -17,6 +17,7 @@ add_executable(tbeq_client
     ui/merchant/MerchantWindow.cpp
     ui/look/LookWindow.cpp
     ui/dialog/NpcDialogWindow.cpp
+    ui/skills/SkillsWindow.cpp
     ui/debug/DebugMenu.cpp
     ui/debug/LogViewer.cpp
     ui/debug/UnitTestRunner.cpp

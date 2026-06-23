@@ -25,6 +25,8 @@ public:
     using CombatEndCallback = std::function<void(const net::CombatEndPayload&)>;
     using VitalsCallback = std::function<void(const net::CharacterVitalsPayload&)>;
     using SkillGainCallback = std::function<void(const net::SkillGainPayload&)>;
+    using LevelUpCallback = std::function<void(const net::LevelUpPayload&)>;
+    using SkillsSnapshotCallback = std::function<void(const net::SkillsSnapshotPayload&)>;
     using InventorySnapshotCallback = std::function<void(const net::InventorySnapshotPayload&)>;
     using EquipItemResultCallback = std::function<void(const net::EquipItemResultPayload&)>;
     using UnequipItemResultCallback = std::function<void(const net::UnequipItemResultPayload&)>;
@@ -66,6 +68,8 @@ public:
     void setCombatEndCallback(CombatEndCallback callback);
     void setVitalsCallback(VitalsCallback callback);
     void setSkillGainCallback(SkillGainCallback callback);
+    void setLevelUpCallback(LevelUpCallback callback);
+    void setSkillsSnapshotCallback(SkillsSnapshotCallback callback);
     void setInventorySnapshotCallback(InventorySnapshotCallback callback);
     void setEquipItemResultCallback(EquipItemResultCallback callback);
     void setUnequipItemResultCallback(UnequipItemResultCallback callback);
@@ -101,6 +105,8 @@ private:
     CombatEndCallback combatEndCallback_;
     VitalsCallback vitalsCallback_;
     SkillGainCallback skillGainCallback_;
+    LevelUpCallback levelUpCallback_;
+    SkillsSnapshotCallback skillsSnapshotCallback_;
     InventorySnapshotCallback inventorySnapshotCallback_;
     EquipItemResultCallback equipItemResultCallback_;
     UnequipItemResultCallback unequipItemResultCallback_;

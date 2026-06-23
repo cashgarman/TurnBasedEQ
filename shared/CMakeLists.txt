@@ -21,8 +21,11 @@ add_library(tbeq_shared
     src/content/AbilityCatalog.cpp
     src/content/ItemCatalog.cpp
     src/content/NpcCatalog.cpp
+    src/content/SkillCatalog.cpp
+    src/content/SkillCapCatalog.cpp
     src/items/ItemRules.cpp
     src/combat/CombatInstance.cpp
+    src/combat/BossScriptCatalog.cpp
     src/ai/ClassCombatProfileCatalog.cpp
     src/ai/ClassCombatBrain.cpp
     src/ai/PartyMemberAI.cpp
@@ -30,6 +33,7 @@ add_library(tbeq_shared
     src/npc/DialogTree.cpp
     src/npc/InteractionResolver.cpp
     src/skills/SkillResolver.cpp
+    src/skills/Progression.cpp
     src/social/Invite.cpp
 )
 

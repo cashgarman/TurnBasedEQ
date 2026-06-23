@@ -54,6 +54,8 @@ enum class ClientPacketType : uint16_t
     MerchantSellResult = 70,
     NpcDialogOpen = 71,
     SessionEnd = 72,
+    LevelUp = 73,
+    SkillsSnapshot = 74,
     DebugCommandRequest = 100,
     DebugCommandResponse = 101,
 };

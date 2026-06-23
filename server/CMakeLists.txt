@@ -32,6 +32,7 @@ add_executable(tbeq_zone_server
     zone/main.cpp
     zone/ZoneServer.cpp
     zone/ZoneServerInventory.cpp
+    zone/ZoneServerProgression.cpp
     zone/combat/CombatManager.cpp
 )
 

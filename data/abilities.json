@@ -33,5 +33,16 @@
     "skillCheck": "kick",
     "snareTurns": 2,
     "minLevel": 1
+  },
+  {
+    "id": "warrior_taunt",
+    "name": "Taunt",
+    "classId": "warrior",
+    "targetType": "single_enemy",
+    "effect": "taunt",
+    "baseValue": 0,
+    "linkedSkill": "taunt",
+    "skillCheck": "taunt",
+    "minLevel": 4
   }
 ]

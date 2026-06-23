@@ -43,6 +43,7 @@ add_executable(tbeq_tests_unit
     unit/shared/merchant_pricing_test.cpp
     unit/shared/npc_catalog_test.cpp
     unit/ai/class_combat_brain_test.cpp
+    unit/shared/progression_test.cpp
 )
 
 target_link_libraries(tbeq_tests_unit

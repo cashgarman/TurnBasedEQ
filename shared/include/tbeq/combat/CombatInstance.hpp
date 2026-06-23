@@ -4,8 +4,10 @@
 #include <functional>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "tbeq/combat/BossScriptCatalog.hpp"
 #include "tbeq/combat/CombatTypes.hpp"
 #include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
@@ -33,6 +35,7 @@ public:
         const content::MobCatalog& mobCatalog,
         const content::SpellCatalog& spellCatalog,
         const content::AbilityCatalog& abilityCatalog,
+        const BossScriptCatalog& bossScripts,
         Rng& rng);
 
     uint32_t combatId() const { return combatId_; }
@@ -69,6 +72,9 @@ public:
     std::vector<CombatEvent> takePendingEvents();
     std::vector<CombatLootRoll> rollLoot() const;
     void evaluateOutcome();
+    uint32_t mobExperienceReward() const;
+    void addThreat(uint32_t playerSlot, int32_t amount);
+    void applyTaunt(uint32_t playerSlot);
 
 private:
     bool resolveMeleeAttack(CombatParticipant& actor, CombatParticipant& target);
@@ -84,13 +90,18 @@ private:
     bool isValidAbilityTarget(const CombatParticipant& actor, const content::AbilityDef& ability, const CombatParticipant& target) const;
     void applyStatusEffect(CombatParticipant& target, StatusEffectType type, uint16_t turns, int32_t tickValue, const std::string& sourceName);
     uint32_t allocateSlot();
+    void updateBossPhase(CombatParticipant& boss);
+    const BossPhaseDef* activeBossPhase(const CombatParticipant& boss) const;
+    uint32_t chooseThreatTarget(uint32_t actorSlot, BossTargetMode mode) const;
 
     uint32_t combatId_ = 0;
     SkillResolver& skillResolver_;
     const content::MobCatalog& mobCatalog_;
     const content::SpellCatalog& spellCatalog_;
     const content::AbilityCatalog& abilityCatalog_;
+    const BossScriptCatalog& bossScripts_;
     Rng& rng_;
+    std::unordered_map<uint32_t, int32_t> threatByPlayerSlot_;
     std::vector<CombatParticipant> participants_;
     std::vector<uint32_t> turnOrder_;
     size_t currentTurnIndex_ = 0;

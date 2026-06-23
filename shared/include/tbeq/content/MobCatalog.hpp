@@ -26,6 +26,9 @@ struct MobDef
     uint16_t offense = 10;
     uint16_t defense = 10;
     uint16_t agi = 60;
+    bool isNamed = false;
+    bool isBoss = false;
+    std::string bossScriptId;
     std::vector<LootEntry> loot;
 };
 

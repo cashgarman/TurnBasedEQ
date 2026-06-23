@@ -1,0 +1,58 @@
+{
+  "defaults": {
+    "unlockAtLevel": 1,
+    "capPerLevel": 3,
+    "maxCap": 200
+  },
+  "classes": {
+    "warrior": {
+      "offense": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "defense": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "1h_slash": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "1h_pierce": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "1h_blunt": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "2h_slash": { "unlockAtLevel": 5, "capPerLevel": 5, "maxCap": 300 },
+      "bash": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "kick": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "taunt": { "unlockAtLevel": 4, "capPerLevel": 4, "maxCap": 250 },
+      "block": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "dual_wield": { "unlockAtLevel": 10, "capPerLevel": 3, "maxCap": 200 },
+      "double_attack": { "unlockAtLevel": 6, "capPerLevel": 3, "maxCap": 200 },
+      "merchant": { "unlockAtLevel": 1, "capPerLevel": 2, "maxCap": 100 }
+    },
+    "cleric": {
+      "offense": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 200 },
+      "defense": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 200 },
+      "1h_blunt": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 200 },
+      "alteration": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "evocation": { "unlockAtLevel": 1, "capPerLevel": 3, "maxCap": 175 },
+      "abjuration": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "channeling": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "meditate": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "merchant": { "unlockAtLevel": 1, "capPerLevel": 2, "maxCap": 100 }
+    },
+    "wizard": {
+      "offense": { "unlockAtLevel": 1, "capPerLevel": 2, "maxCap": 100 },
+      "defense": { "unlockAtLevel": 1, "capPerLevel": 3, "maxCap": 150 },
+      "1h_blunt": { "unlockAtLevel": 1, "capPerLevel": 3, "maxCap": 150 },
+      "evocation": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "abjuration": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "conjuration": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "divination": { "unlockAtLevel": 1, "capPerLevel": 3, "maxCap": 200 },
+      "channeling": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "meditate": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "merchant": { "unlockAtLevel": 1, "capPerLevel": 2, "maxCap": 100 }
+    },
+    "rogue": {
+      "offense": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "defense": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "1h_pierce": { "unlockAtLevel": 1, "capPerLevel": 5, "maxCap": 300 },
+      "hide": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "sneak": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "pick_lock": { "unlockAtLevel": 1, "capPerLevel": 4, "maxCap": 250 },
+      "pick_pocket": { "unlockAtLevel": 5, "capPerLevel": 3, "maxCap": 200 },
+      "forage": { "unlockAtLevel": 1, "capPerLevel": 3, "maxCap": 200 },
+      "merchant": { "unlockAtLevel": 1, "capPerLevel": 2, "maxCap": 100 }
+    }
+  }
+}

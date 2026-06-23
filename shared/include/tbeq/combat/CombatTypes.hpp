@@ -118,6 +118,11 @@ struct CombatParticipant
     bool isPlayerControlled = false;
     bool isAiCompanion = false;
     bool godMode = false;
+    bool isNamed = false;
+    bool isBoss = false;
+    std::string bossScriptId;
+    uint16_t activeBossPhaseIndex = 0;
+    float bossDamageMultiplier = 1.0f;
     bool isStunned() const;
     bool isSnared() const;
     uint16_t skillLevel(const std::string& skillId) const;

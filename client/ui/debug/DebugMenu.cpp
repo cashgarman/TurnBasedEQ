@@ -72,6 +72,49 @@ void DebugMenu::drawCheats(
     }
 
     ImGui::Separator();
+    ImGui::TextUnformatted("Progression cheats");
+    static char skillIdBuffer[64] = "offense";
+    static char skillLevelBuffer[8] = "50";
+    ImGui::InputText("Skill id", skillIdBuffer, sizeof(skillIdBuffer));
+    ImGui::InputText("Skill level", skillLevelBuffer, sizeof(skillLevelBuffer));
+    if (ImGui::Button("Set skill level"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(
+            tbeq::net::DebugCommand::SetSkillLevel,
+            {skillIdBuffer, skillLevelBuffer},
+            response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Max skills"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::MaxSkills, {}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    if (ImGui::Button("Grant 500 XP"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::GrantExperience, {"500"}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Practice forage"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::PracticeSkill, {"forage"}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Practice pick lock"))
+    {
+        tbeq::net::DebugCommandResponsePayload response;
+        zoneClient->sendDebugCommand(tbeq::net::DebugCommand::PracticeSkill, {"pick_lock"}, response);
+        appendLogLine("[Debug] " + response.message);
+    }
+
+    ImGui::Separator();
     ImGui::TextUnformatted("Item cheats");
     static char grantItemBuffer[64] = "rusty_dagger";
     ImGui::InputText("Item id", grantItemBuffer, sizeof(grantItemBuffer));

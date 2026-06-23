@@ -52,6 +52,9 @@ bool MobCatalog::loadFromFile(const std::filesystem::path& path)
         mob.offense = mobJson.value("offense", static_cast<uint16_t>(10));
         mob.defense = mobJson.value("defense", static_cast<uint16_t>(10));
         mob.agi = mobJson.value("agi", static_cast<uint16_t>(60));
+        mob.isNamed = mobJson.value("isNamed", false);
+        mob.isBoss = mobJson.value("isBoss", false);
+        mob.bossScriptId = mobJson.value("bossScriptId", std::string{});
 
         if (mobJson.contains("loot") && mobJson["loot"].is_array())
         {

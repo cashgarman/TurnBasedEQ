@@ -14,7 +14,9 @@
 #include "tbeq/ai/ClassCombatBrain.hpp"
 #include "tbeq/ai/ClassCombatProfile.hpp"
 #include "tbeq/ai/PartyMemberAI.hpp"
+#include "tbeq/combat/BossScriptCatalog.hpp"
 #include "tbeq/combat/CombatInstance.hpp"
+#include "tbeq/content/SkillCatalog.hpp"
 #include "tbeq/content/AbilityCatalog.hpp"
 #include "tbeq/content/MobCatalog.hpp"
 #include "tbeq/content/SpellCatalog.hpp"
@@ -48,6 +50,7 @@ public:
     using BroadcastFn = std::function<void(const std::vector<std::string>& characterIds, net::ClientPacketType type, const net::ByteWriter& writer)>;
     using PersistStateFn = std::function<void(const std::string& characterId, const CharacterState& state)>;
     using SyncInventoryFn = std::function<void(const std::string& characterId)>;
+    using SyncProgressFn = std::function<void(const std::string& characterId)>;
 
     CombatManager(
         asio::io_context& io,
@@ -55,12 +58,15 @@ public:
         const content::MobCatalog& mobCatalog,
         const content::SpellCatalog& spellCatalog,
         const content::AbilityCatalog& abilityCatalog,
+        const combat::BossScriptCatalog& bossScripts,
+        const content::SkillCatalog& skillCatalog,
         const ai::ClassCombatProfileCatalog& aiProfiles,
         FindPlayerFn findPlayer,
         FindAiCompanionsFn findAiCompanions,
         BroadcastFn broadcast,
         PersistStateFn persistState,
-        SyncInventoryFn syncInventory);
+        SyncInventoryFn syncInventory,
+        SyncProgressFn syncProgress);
 
     bool tryStartSpawnCombat(PlayerView& player, const std::string& mobTable);
     bool startDebugCombat(PlayerView& player, const std::vector<std::string>& mobIds);
@@ -75,6 +81,7 @@ public:
     void unlockAllSpells(const std::string& characterId);
 
     bool isInCombat(const std::string& characterId) const;
+    void grantSkillXp(const std::string& characterId, const std::string& skillId, uint32_t amount);
 
 private:
     struct ActiveCombat
@@ -93,6 +100,7 @@ private:
 
     void syncParticipantFromPlayer(combat::CombatParticipant& participant, const PlayerView& player);
     void syncPlayerFromParticipant(const combat::CombatParticipant& participant, PlayerView& player);
+    void applySkillXp(PlayerView& player, const std::string& skillId, uint32_t amount);
     void applySkillXp(PlayerView& player, bool hit);
     void grantLoot(PlayerView& player, const std::vector<combat::CombatLootRoll>& loot);
     void addPlayerToCombat(ActiveCombat& combat, PlayerView& player, bool playerControlled, bool aiCompanion);
@@ -115,6 +123,8 @@ private:
     const content::MobCatalog& mobCatalog_;
     const content::SpellCatalog& spellCatalog_;
     const content::AbilityCatalog& abilityCatalog_;
+    const combat::BossScriptCatalog& bossScripts_;
+    const content::SkillCatalog& skillCatalog_;
     ai::ClassCombatBrain classCombatBrain_;
     ai::PartyMemberAI partyMemberAi_;
     FindPlayerFn findPlayer_;
@@ -122,6 +132,7 @@ private:
     BroadcastFn broadcast_;
     PersistStateFn persistState_;
     SyncInventoryFn syncInventory_;
+    SyncProgressFn syncProgress_;
     combat::CombatInstance::Rng rng_;
     std::unordered_map<uint32_t, ActiveCombat> combats_;
     std::unordered_map<std::string, uint32_t> characterCombatIds_;

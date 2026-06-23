@@ -112,6 +112,9 @@ int main(int argc, char** argv)
     ok &= validateObjectFile(dataRoot / "entity_sprites.json", {"races", "classes", "npcRoles", "defaults"});
     ok &= validateArrayFile(dataRoot / "items.json", {"id", "name"});
     ok &= validateArrayFile(dataRoot / "npcs.json", {"id", "name", "roles"});
+    ok &= validateArrayFile(dataRoot / "skills.json", {"id", "category", "displayName"});
+    ok &= validateObjectFile(dataRoot / "skill_caps.json", {"classes"});
+    ok &= validateObjectFile(dataRoot / "boss_scripts.json", {});
     ok &= validateObjectFile(dataRoot / "worldgen/world_rules.json", {"zoneRoles", "validatorRules"});
     ok &= validateObjectFile(dataRoot / "worldgen/zone_templates.json", {"city", "hunting", "dungeon"});
 

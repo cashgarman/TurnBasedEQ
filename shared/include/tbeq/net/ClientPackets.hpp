@@ -289,6 +289,30 @@ struct SkillGainPayload
     std::string message;
 };
 
+struct LevelUpPayload
+{
+    uint16_t oldLevel = 1;
+    uint16_t newLevel = 1;
+    uint32_t experienceGranted = 0;
+    std::string message;
+};
+
+struct SkillEntryPayload
+{
+    std::string skillId;
+    uint16_t level = 1;
+    uint32_t experience = 0;
+    uint16_t cap = 0;
+};
+
+struct SkillsSnapshotPayload
+{
+    uint16_t characterLevel = 1;
+    uint32_t characterExperience = 0;
+    uint32_t experienceToNextLevel = 0;
+    std::vector<SkillEntryPayload> skills;
+};
+
 struct InventoryEntryPayload
 {
     std::string itemId;

@@ -71,6 +71,18 @@ Includes unit tests, integration tests, and CTest target `content_validation`.
 - **Deterministic portals** — `PortalPlacementResolver` pairs cross-zone destination coordinates from `zone_links` and world seed
 - **Dev regen** — delete a zone’s `zone_tiles` row (or `clearWorld` + restart) to regenerate that zone; two processes must not share the same `--zone-id`
 
+### Phase 6 — Leveling, skills, enemies, and bosses
+
+- **Character XP** — combat victory grants XP from mob level/HP; named and boss mobs pay bonus XP; level-up restores HP/mana and raises skill caps via `data/skill_caps.json`
+- **Skill catalog** — 45 skills across melee, combat fundamentals/maneuvers, casting, stealth, exploration, crafting, and trade in `data/skills.json`
+- **Skill progression** — combat swings, defend, taunt, meditate, and debug practice activities grant skill XP with level-scaled thresholds; `SkillGain` notifications in chat and Skills UI
+- **Skills UI** — `K` toggles draggable Skills window with category sort, level/cap display, and recent skill-up highlights
+- **Zone tiers & named mobs** — hunting tiers include **Grunt the Boar**; goblin tier adds **Skrit Nails**; Goblin Cave boss room spawns **Goblin Chief**
+- **Boss phase script** — Goblin Chief enrages below 50% HP, switches to highest-threat targeting (Taunt matters), and hits harder
+- **Defense & Taunt** — Defend mitigates damage using Defense skill; Warrior **Taunt** ability draws boss threat
+- **Debug cheats** — set skill level, max skills, grant XP, practice forage/pick lock (`F1` → Cheats)
+- **RaidCombatInstance stub** — header-only subclass for Phase 10 raid scale
+
 ## Run local server cluster
 
 ```powershell
@@ -105,6 +117,7 @@ From the repo root (so `config/ui_layout.json` resolves correctly):
 - **Phase 3.5** — procedural entity sprites on the tilemap (players, other clients, zone NPCs)
 - **Phase 5** — `I` inventory, `L` look/inspect, `N` NPC interact, merchant and lorekeeper NPCs
 - **Phase 5.5** — `P` portal on portal tiles; zone-aware portal hints in system chat
+- **Phase 6** — `K` skills window; XP/level-up and skill-up notifications in system chat
 
 ## Project layout
 

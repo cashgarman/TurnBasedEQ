@@ -4,10 +4,10 @@
       "mobs": ["forest_rat", "forest_rat"]
     },
     "forest_tier2": {
-      "mobs": ["forest_boar", "forest_boar"]
+      "mobs": ["forest_boar", "grunt_the_boar"]
     },
     "goblin_tier1": {
-      "mobs": ["goblin_scout", "goblin_scout"]
+      "mobs": ["goblin_scout", "goblin_scout", "skrit_nails"]
     },
     "goblin_boss": {
       "mobs": ["goblin_chief"]
@@ -36,6 +36,19 @@
         { "itemId": "boar_hide", "minQuantity": 1, "maxQuantity": 2, "dropChance": 75 }
       ]
     },
+    "grunt_the_boar": {
+      "name": "Grunt the Boar",
+      "level": 3,
+      "hp": 52,
+      "offense": 14,
+      "defense": 12,
+      "agi": 50,
+      "isNamed": true,
+      "loot": [
+        { "itemId": "boar_hide", "minQuantity": 2, "maxQuantity": 3, "dropChance": 100 },
+        { "itemId": "rusty_dagger", "minQuantity": 1, "maxQuantity": 1, "dropChance": 35 }
+      ]
+    },
     "goblin_scout": {
       "name": "Goblin Scout",
       "level": 2,
@@ -48,6 +61,19 @@
         { "itemId": "goblin_tooth", "minQuantity": 1, "maxQuantity": 2, "dropChance": 80 }
       ]
     },
+    "skrit_nails": {
+      "name": "Skrit Nails",
+      "level": 3,
+      "hp": 44,
+      "offense": 13,
+      "defense": 11,
+      "agi": 72,
+      "isNamed": true,
+      "loot": [
+        { "itemId": "goblin_tooth", "minQuantity": 2, "maxQuantity": 3, "dropChance": 100 },
+        { "itemId": "rusty_dagger", "minQuantity": 1, "maxQuantity": 1, "dropChance": 40 }
+      ]
+    },
     "goblin_chief": {
       "name": "Goblin Chief",
       "level": 4,
@@ -55,6 +81,8 @@
       "offense": 16,
       "defense": 14,
       "agi": 60,
+      "isBoss": true,
+      "bossScriptId": "goblin_chief",
       "loot": [
         { "itemId": "chief_blade", "minQuantity": 1, "maxQuantity": 1, "dropChance": 50 },
         { "itemId": "goblin_tooth", "minQuantity": 2, "maxQuantity": 4, "dropChance": 100 }

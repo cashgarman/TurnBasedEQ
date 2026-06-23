@@ -12,7 +12,10 @@ enum class SkillCategory : uint8_t
     CombatFundamentals,
     CombatManeuvers,
     Casting,
+    CastingSupport,
     StealthUtility,
+    Exploration,
+    Support,
     Crafting,
     Trade,
 };

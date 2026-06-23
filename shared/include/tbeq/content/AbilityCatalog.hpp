@@ -19,6 +19,7 @@ enum class AbilityEffectType : uint8_t
     Damage = 0,
     DamageStun = 1,
     DamageSnare = 2,
+    Taunt = 3,
 };
 
 struct AbilityDef

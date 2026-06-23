@@ -12,6 +12,7 @@
 #include "tbeq/net/PacketSerializer.hpp"
 #include "tbeq/net/ServerPackets.hpp"
 #include "tbeq/social/ChatChannel.hpp"
+#include "tbeq/skills/Progression.hpp"
 #include "tbeq/worldgen/WorldBootstrap.hpp"
 
 namespace tbeq::server
@@ -79,6 +80,25 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         throw std::runtime_error("Failed to load mobs.json");
     }
 
+    const auto skillsPath = std::filesystem::path(config.dataRoot) / "skills.json";
+    if (!skillCatalog_.loadFromFile(skillsPath))
+    {
+        throw std::runtime_error("Failed to load skills.json");
+    }
+
+    const auto skillCapsPath = std::filesystem::path(config.dataRoot) / "skill_caps.json";
+    if (!skillCapCatalog_.loadFromFile(skillCapsPath))
+    {
+        throw std::runtime_error("Failed to load skill_caps.json");
+    }
+    skillResolver_.setSkillCapCatalog(&skillCapCatalog_);
+
+    const auto bossScriptsPath = std::filesystem::path(config.dataRoot) / "boss_scripts.json";
+    if (!bossScriptCatalog_.loadFromFile(bossScriptsPath))
+    {
+        throw std::runtime_error("Failed to load boss_scripts.json");
+    }
+
     const auto spellsPath = std::filesystem::path(config.dataRoot) / "spells.json";
     if (!spellCatalog_.loadFromFile(spellsPath))
     {
@@ -123,6 +143,8 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
         mobCatalog_,
         spellCatalog_,
         abilityCatalog_,
+        bossScriptCatalog_,
+        skillCatalog_,
         aiProfiles_,
         [this](const std::string& characterId) -> CombatManager::PlayerView*
         {
@@ -155,6 +177,13 @@ ZoneServer::ZoneServer(asio::io_context& io, const AppConfig& config)
             if (PlayerEntity* player = findPlayerByCharacterId(characterId))
             {
                 sendInventorySnapshot(*player);
+            }
+        },
+        [this](const std::string& characterId)
+        {
+            if (PlayerEntity* player = findPlayerByCharacterId(characterId))
+            {
+                sendSkillsSnapshot(*player);
             }
         });
 
@@ -665,6 +694,7 @@ void ZoneServer::handleWorldPacket(
             {
                 player.characterState.classId = player.classId;
             }
+            player.level = player.characterState.level;
             items::ItemRules::recomputeDerivedStats(player.characterState, itemCatalog_);
             player.tileX = static_cast<int32_t>(std::lround(loadResponse.posX));
             player.tileY = static_cast<int32_t>(std::lround(loadResponse.posY));
@@ -885,6 +915,7 @@ void ZoneServer::handleSessionResume(
         request.sessionResumeToken);
 
     sendInventorySnapshot(*player);
+    sendSkillsSnapshot(*player);
 
     broadcastEntitySnapshot(selfEntityId);
     sendZoneTransferCompleteToWorld(*player);
@@ -1234,6 +1265,7 @@ void ZoneServer::handleMeditate(
         result.maxMana = player->characterState.maxMana;
         result.message = "You meditate and recover " + std::to_string(result.manaGained) + " mana.";
         persistPlayerState(player->characterId, player->characterState);
+        applyActivitySkillGain(*player, "meditate", "meditate");
     }
 
     sendClientPacket(
@@ -1431,6 +1463,93 @@ void ZoneServer::handleDebugCommand(
             break;
         }
         response.ok = tryEquipItem(*player, request.args[0], response.message);
+        break;
+    }
+    case net::DebugCommand::SetSkillLevel:
+    {
+        if (player == nullptr || request.args.size() < 2)
+        {
+            response.message = "Usage: set_skill <skillId> <level>";
+            break;
+        }
+        const uint16_t level = static_cast<uint16_t>(std::stoul(request.args[1]));
+        auto& progress = player->characterState.skillOrDefault(request.args[0]);
+        const uint16_t cap = skillResolver_.getCap(player->classId, request.args[0], player->level);
+        progress.level = std::min(level, cap);
+        progress.experience = 0;
+        persistPlayerState(player->characterId, player->characterState);
+        sendSkillsSnapshot(*player);
+        response.ok = true;
+        response.message = "Set " + request.args[0] + " to " + std::to_string(progress.level);
+        break;
+    }
+    case net::DebugCommand::MaxSkills:
+    {
+        if (player == nullptr)
+        {
+            response.message = "Not in zone";
+            break;
+        }
+        for (auto& [skillId, progress] : player->characterState.skills)
+        {
+            const uint16_t cap = skillResolver_.getCap(player->classId, skillId, player->level);
+            if (cap > 0)
+            {
+                progress.level = cap;
+                progress.experience = 0;
+            }
+        }
+        persistPlayerState(player->characterId, player->characterState);
+        sendSkillsSnapshot(*player);
+        response.ok = true;
+        response.message = "All trainable skills set to cap for level " + std::to_string(player->level);
+        break;
+    }
+    case net::DebugCommand::GrantExperience:
+    {
+        if (player == nullptr || request.args.empty())
+        {
+            response.message = "Usage: grant_xp <amount>";
+            break;
+        }
+        const uint32_t amount = static_cast<uint32_t>(std::stoul(request.args[0]));
+        const auto levelResult = progression::grantCharacterExperience(player->characterState, amount);
+        player->level = player->characterState.level;
+        persistPlayerState(player->characterId, player->characterState);
+        sendSkillsSnapshot(*player);
+        response.ok = true;
+        response.message = levelResult.leveledUp
+            ? "Granted XP; leveled to " + std::to_string(levelResult.newLevel)
+            : "Granted " + std::to_string(amount) + " XP";
+        break;
+    }
+    case net::DebugCommand::PracticeSkill:
+    {
+        if (player == nullptr || request.args.empty())
+        {
+            response.message = "Usage: practice_skill <forage|pick_lock|meditate>";
+            break;
+        }
+        const std::string& activity = request.args[0];
+        if (activity == "forage")
+        {
+            applyActivitySkillGain(*player, "forage", "forage");
+        }
+        else if (activity == "pick_lock")
+        {
+            applyActivitySkillGain(*player, "pick_lock", "pick_lock");
+        }
+        else if (activity == "meditate")
+        {
+            applyActivitySkillGain(*player, "meditate", "meditate");
+        }
+        else
+        {
+            response.message = "Unknown activity: " + activity;
+            break;
+        }
+        response.ok = true;
+        response.message = "Practiced " + activity;
         break;
     }
     default:

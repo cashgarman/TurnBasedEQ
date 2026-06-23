@@ -29,6 +29,10 @@ AbilityEffectType parseEffectType(const std::string& value)
     {
         return AbilityEffectType::DamageSnare;
     }
+    if (value == "taunt")
+    {
+        return AbilityEffectType::Taunt;
+    }
     return AbilityEffectType::Damage;
 }
 

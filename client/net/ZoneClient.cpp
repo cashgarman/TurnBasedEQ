@@ -663,6 +663,24 @@ void ZoneClient::dispatchGameplayPacket(const net::SerializedPacket& packet)
         }
         break;
     }
+    case net::ClientPacketType::LevelUp:
+    {
+        net::LevelUpPayload levelUp;
+        if (net::deserializeClientPacket(packet, levelUp) && levelUpCallback_)
+        {
+            levelUpCallback_(levelUp);
+        }
+        break;
+    }
+    case net::ClientPacketType::SkillsSnapshot:
+    {
+        net::SkillsSnapshotPayload skills;
+        if (net::deserializeClientPacket(packet, skills) && skillsSnapshotCallback_)
+        {
+            skillsSnapshotCallback_(skills);
+        }
+        break;
+    }
     case net::ClientPacketType::InventorySnapshot:
     {
         net::InventorySnapshotPayload inventory;
@@ -820,6 +838,16 @@ void ZoneClient::setVitalsCallback(VitalsCallback callback)
 void ZoneClient::setSkillGainCallback(SkillGainCallback callback)
 {
     skillGainCallback_ = std::move(callback);
+}
+
+void ZoneClient::setLevelUpCallback(LevelUpCallback callback)
+{
+    levelUpCallback_ = std::move(callback);
+}
+
+void ZoneClient::setSkillsSnapshotCallback(SkillsSnapshotCallback callback)
+{
+    skillsSnapshotCallback_ = std::move(callback);
 }
 
 void ZoneClient::setInventorySnapshotCallback(InventorySnapshotCallback callback)
