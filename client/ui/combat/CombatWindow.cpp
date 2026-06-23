@@ -136,8 +136,10 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
 
     visible = true;
     window.state().visible = true;
-    if (!window.begin(displayWidth, displayHeight))
+    const bool drawContent = window.begin(displayWidth, displayHeight);
+    if (!drawContent)
     {
+        window.end();
         return;
     }
 

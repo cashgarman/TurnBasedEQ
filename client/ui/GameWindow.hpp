@@ -41,6 +41,7 @@ public:
     bool open_ = true;
     bool pendingLayoutApply_ = true;
     bool firstUseApplied_ = false;
+    bool imguiBegun_ = false;
 };
 
 // Call immediately after ImGui::NewFrame() to clamp active title-bar drags before shell windows begin.

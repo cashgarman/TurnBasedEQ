@@ -98,7 +98,6 @@ struct ClientApp
     tbeq::ui::GameWindow debugWindow{"debug_menu", "Debug Menu", 400.0f, 300.0f};
     tbeq::ui::LogViewer logViewer;
     tbeq::ui::DebugMenu debugMenu{logViewer};
-    bool debugVisible = false;
 #endif
 
     char usernameBuffer[64] = "demo_user";
@@ -627,8 +626,7 @@ struct ClientApp
 #if TBEQ_ENABLE_DEBUG_MENU
         else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F1)
         {
-            debugVisible = !debugVisible;
-            debugWindow.state().visible = debugVisible;
+            debugWindow.state().visible = !debugWindow.state().visible;
             layoutManager.markDirty();
         }
 #endif
@@ -758,11 +756,35 @@ struct ClientApp
         ImGui::End();
     }
 
+#if TBEQ_ENABLE_DEBUG_MENU
+    void renderDebugMenu()
+    {
+        const bool drawContent = debugWindow.begin(width, height);
+        if (drawContent)
+        {
+            debugMenu.update(
+                zoneClient.get(),
+                [this](const std::string& line)
+                {
+                    chatLines.push_back(line);
+                });
+        }
+        if (debugWindow.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+        debugWindow.end();
+    }
+#endif
+
     void renderShellWindows()
     {
         if (state == ClientState::Login)
         {
             renderLoginPanel();
+#if TBEQ_ENABLE_DEBUG_MENU
+            renderDebugMenu();
+#endif
             return;
         }
 
@@ -777,12 +799,12 @@ struct ClientApp
                 (std::to_string(hudHp) + " / " + std::to_string(hudMaxHp)).c_str());
             ImGui::Text("Mana: %u / %u", hudMana, hudMaxMana);
             ImGui::TextUnformatted("WASD move | P use portal | F1 debug");
-            if (hudWindow.syncFromImGui())
-            {
-                layoutManager.markDirty();
-            }
-            hudWindow.end();
         }
+        if (hudWindow.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+        hudWindow.end();
 
         if (minimapWindow.begin(width, height))
         {
@@ -805,12 +827,12 @@ struct ClientApp
                         IM_COL32(color.r, color.g, color.b, color.a));
                 }
             }
-            if (minimapWindow.syncFromImGui())
-            {
-                layoutManager.markDirty();
-            }
-            minimapWindow.end();
         }
+        if (minimapWindow.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+        minimapWindow.end();
 
         if (chatWindow.begin(width, height))
         {
@@ -831,12 +853,12 @@ struct ClientApp
                     inputBuffer[0] = '\0';
                 }
             }
-            if (chatWindow.syncFromImGui())
-            {
-                layoutManager.markDirty();
-            }
-            chatWindow.end();
         }
+        if (chatWindow.syncFromImGui())
+        {
+            layoutManager.markDirty();
+        }
+        chatWindow.end();
 
         combatWindow.draw(combatWindowPanel, combatVisible, width, height);
         if (combatVisible && combatWindowPanel.syncFromImGui())
@@ -845,46 +867,17 @@ struct ClientApp
         }
 
 #if TBEQ_ENABLE_DEBUG_MENU
-        if (debugWindow.begin(width, height))
-        {
-            debugMenu.update(debugVisible);
-            if (debugVisible && zoneClient != nullptr)
-            {
-                ImGui::Separator();
-                ImGui::TextUnformatted("Combat cheats (dev-mode server required)");
-                if (ImGui::Button("Spawn forest_rat"))
-                {
-                    tbeq::net::DebugCommandResponsePayload response;
-                    zoneClient->sendDebugCommand(tbeq::net::DebugCommand::SpawnMob, {"forest_rat"}, response);
-                    chatLines.push_back("[Debug] " + response.message);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("God mode"))
-                {
-                    tbeq::net::DebugCommandResponsePayload response;
-                    zoneClient->sendDebugCommand(tbeq::net::DebugCommand::GodMode, {"on"}, response);
-                    chatLines.push_back("[Debug] " + response.message);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Force combat end"))
-                {
-                    tbeq::net::DebugCommandResponsePayload response;
-                    zoneClient->sendDebugCommand(tbeq::net::DebugCommand::ForceCombatEnd, {}, response);
-                    chatLines.push_back("[Debug] " + response.message);
-                }
-            }
-            if (debugWindow.syncFromImGui())
-            {
-                layoutManager.markDirty();
-            }
-            debugWindow.end();
-        }
+        renderDebugMenu();
 #endif
     }
 
     void frame()
     {
         pollLoginJob();
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
         renderWorld();
 
         ImGui_ImplSDLRenderer2_NewFrame();

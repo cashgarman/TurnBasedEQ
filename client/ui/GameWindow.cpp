@@ -89,6 +89,7 @@ GameWindow::GameWindow(std::string id, std::string title, float minWidth, float 
 
 bool GameWindow::begin(int displayWidth, int displayHeight)
 {
+    imguiBegun_ = false;
     if (!state_.visible)
     {
         return false;
@@ -120,7 +121,9 @@ bool GameWindow::begin(int displayWidth, int displayHeight)
     }
 
     open_ = state_.visible;
-    const bool opened = ImGui::Begin(state_.title.c_str(), &open_, flags);
+    const std::string windowLabel = state_.title + "##" + state_.id;
+    imguiBegun_ = true;
+    const bool opened = ImGui::Begin(windowLabel.c_str(), &open_, flags);
     state_.visible = open_;
 
     return opened;
@@ -128,7 +131,11 @@ bool GameWindow::begin(int displayWidth, int displayHeight)
 
 void GameWindow::end()
 {
-    ImGui::End();
+    if (imguiBegun_)
+    {
+        ImGui::End();
+        imguiBegun_ = false;
+    }
 }
 
 void GameWindow::applyState(const GameWindowState& state)
@@ -141,7 +148,7 @@ void GameWindow::applyState(const GameWindowState& state)
 
 bool GameWindow::syncFromImGui()
 {
-    if (!state_.visible)
+    if (!imguiBegun_ || !state_.visible)
     {
         return false;
     }
