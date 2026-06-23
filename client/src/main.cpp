@@ -45,6 +45,42 @@ namespace
 
 using LoginProfiler = tbeq::client::LoginProfiler;
 
+void drawWorldNameplates(
+    const std::vector<tbeq::client::EntityRenderer::WorldNameplate>& plates,
+    int cameraTileX,
+    int cameraTileY)
+{
+    ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+    const int tileSize = tbeq::render::TileGenerator::kTileSize;
+
+    for (const auto& plate : plates)
+    {
+        const float centerX = static_cast<float>((plate.tileX - cameraTileX) * tileSize + tileSize / 2);
+        const float nameY = static_cast<float>((plate.tileY - cameraTileY) * tileSize - 4.0f);
+        const float roleY = nameY - ImGui::GetTextLineHeight() - 2.0f;
+
+        ImU32 roleColor = IM_COL32(220, 220, 220, 255);
+        if (plate.appearanceId == "merchant")
+        {
+            roleColor = IM_COL32(255, 210, 80, 255);
+        }
+        else if (plate.appearanceId == "lore")
+        {
+            roleColor = IM_COL32(140, 180, 255, 255);
+        }
+
+        const ImVec2 nameSize = ImGui::CalcTextSize(plate.name.c_str());
+        const ImVec2 roleSize = ImGui::CalcTextSize(plate.role.c_str());
+        const float nameX = centerX - nameSize.x * 0.5f;
+        const float roleX = centerX - roleSize.x * 0.5f;
+
+        drawList->AddText(ImVec2(roleX + 1.0f, roleY + 1.0f), IM_COL32(0, 0, 0, 220), plate.role.c_str());
+        drawList->AddText(ImVec2(roleX, roleY), roleColor, plate.role.c_str());
+        drawList->AddText(ImVec2(nameX + 1.0f, nameY + 1.0f), IM_COL32(0, 0, 0, 220), plate.name.c_str());
+        drawList->AddText(ImVec2(nameX, nameY), IM_COL32(255, 255, 255, 255), plate.name.c_str());
+    }
+}
+
 enum class ClientState
 {
     Login,
@@ -124,6 +160,31 @@ struct ClientApp
     std::string statusMessage = "Login to enter the generated world.";
     bool loginInProgress = false;
     std::future<LoginJobResult> loginFuture;
+
+    bool prepareEnvironment()
+    {
+        const auto repoRoot = tbeq::client::LocalClusterLauncher::detectRepoRoot();
+        std::error_code ec;
+        std::filesystem::current_path(repoRoot, ec);
+        if (ec)
+        {
+            spdlog::warn("Could not set working directory to {}: {}", repoRoot.string(), ec.message());
+        }
+        else
+        {
+            spdlog::info("Working directory set to {}", repoRoot.string());
+        }
+
+        spdlog::info("Ensuring local WorldLogin and ZoneServer are running...");
+        if (!localCluster.ensureRunning())
+        {
+            statusMessage = "Could not reach or start local servers. Build server targets first.";
+            return false;
+        }
+
+        statusMessage = "Login to enter the generated world.";
+        return true;
+    }
 
     bool init()
     {
@@ -205,15 +266,7 @@ struct ClientApp
         logViewer.setSink(tbeq::getRingBufferSink());
 #endif
 
-        chatLines.push_back("[System] Welcome to TurnBasedEQ Phase 2.");
-        if (!localCluster.ensureRunning())
-        {
-            statusMessage = "Could not reach or start local servers. Build server targets and run from repo root.";
-        }
-        else
-        {
-            statusMessage = "Login to enter the generated world.";
-        }
+        chatLines.push_back("[System] Welcome to TurnBasedEQ Phase 5. I inventory, N interact, P portal.");
         spdlog::info("TurnBasedEQ client started");
         return true;
     }
@@ -643,11 +696,18 @@ struct ClientApp
             2);
         if (npcEntityId.has_value())
         {
+            if (const auto plate = entityRenderer->nearestNpcNameplate(
+                    zoneClient->playerTileX(),
+                    zoneClient->playerTileY(),
+                    2))
+            {
+                chatLines.push_back("[System] Interacting with " + plate->name + " (" + plate->role + ").");
+            }
             interactWithNpc(*npcEntityId);
         }
         else
         {
-            chatLines.push_back("[System] No NPC nearby to interact with.");
+            chatLines.push_back("[System] No NPC nearby. Walk next to a gold-outlined merchant and press N.");
         }
     }
 
@@ -704,7 +764,8 @@ struct ClientApp
         cameraTileY = std::max(0, zoneClient->playerTileY() - 6);
         state = ClientState::InZone;
         statusMessage = "In zone: " + zoneSnapshot.zoneName;
-        chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Use WASD to move.");
+        chatLines.push_back("[System] Entered " + zoneSnapshot.zoneName + ". Gold figures are merchants (N to trade).");
+        chatLines.push_back("[System] North portal at tile (32, 8): walk there and press P to leave the city.");
         profiler.logSummary("enter_zone");
         return true;
     }
@@ -910,6 +971,21 @@ struct ClientApp
         }
     }
 
+    void renderWorldNameplates()
+    {
+        if (state != ClientState::InZone || entityRenderer == nullptr)
+        {
+            return;
+        }
+
+        const int viewTilesWide = width / tbeq::render::TileGenerator::kTileSize + 2;
+        const int viewTilesHigh = height / tbeq::render::TileGenerator::kTileSize + 2;
+        drawWorldNameplates(
+            entityRenderer->visibleNameplates(cameraTileX, cameraTileY, viewTilesWide, viewTilesHigh),
+            cameraTileX,
+            cameraTileY);
+    }
+
     void renderLoginPanel()
     {
         ImGui::SetNextWindowPos(ImVec2(width * 0.5f, height * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -1026,7 +1102,7 @@ struct ClientApp
                     }
                     else if (dot.entityType != 0)
                     {
-                        dotColor = IM_COL32(180, 120, 255, 255);
+                        dotColor = IM_COL32(255, 210, 80, 255);
                     }
 
                     const ImVec2 center(
@@ -1129,6 +1205,7 @@ struct ClientApp
         ImGui::NewFrame();
         tbeq::ui::constrainActiveImGuiWindowDrag(width, height);
 
+        renderWorldNameplates();
         renderShellWindows();
 
         ImGui::Render();
@@ -1145,8 +1222,14 @@ int main(int, char**)
     spdlog::info("Press F1 to toggle debug menu (Debug builds)");
 
     ClientApp app;
+    if (!app.prepareEnvironment())
+    {
+        return EXIT_FAILURE;
+    }
+
     if (!app.init())
     {
+        app.shutdown();
         return EXIT_FAILURE;
     }
 

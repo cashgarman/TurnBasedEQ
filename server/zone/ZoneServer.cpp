@@ -328,7 +328,8 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         }
         net::EntityStatePayload entity;
         entity.entityId = npc.entityId;
-        entity.name = npc.npcId;
+        const content::NpcDef* npcDef = npcCatalog_.findNpc(npc.npcId);
+        entity.name = npcDef != nullptr ? npcDef->name : npc.npcId;
         entity.entityType = 1;
         entity.tileX = npc.tileX;
         entity.tileY = npc.tileY;

@@ -277,9 +277,33 @@ void EntityRenderer::render(int cameraTileX, int cameraTileY, int viewTilesWide,
         }
         else
         {
-            SDL_SetTextureColorMod(texture, 220, 220, 220);
+            SDL_SetTextureColorMod(texture, 255, 255, 255);
             SDL_SetTextureAlphaMod(texture, 255);
             SDL_RenderCopy(renderer_, texture, nullptr, &dest);
+
+            if (entity->entityType != 0)
+            {
+                if (entity->appearanceId == "merchant")
+                {
+                    SDL_SetRenderDrawColor(renderer_, 255, 210, 80, 255);
+                }
+                else if (entity->appearanceId == "lore")
+                {
+                    SDL_SetRenderDrawColor(renderer_, 140, 180, 255, 255);
+                }
+                else
+                {
+                    SDL_SetRenderDrawColor(renderer_, 200, 160, 255, 255);
+                }
+
+                SDL_Rect outline = dest;
+                SDL_RenderDrawRect(renderer_, &outline);
+                outline.x += 1;
+                outline.y += 1;
+                outline.w -= 2;
+                outline.h -= 2;
+                SDL_RenderDrawRect(renderer_, &outline);
+            }
         }
     }
 }
@@ -297,6 +321,88 @@ std::vector<EntityRenderer::MinimapDot> EntityRenderer::minimapDots() const
             entity.isLocalPlayer});
     }
     return dots;
+}
+
+namespace
+{
+
+std::string roleLabelForAppearance(const std::string& appearanceId)
+{
+    if (appearanceId == "merchant")
+    {
+        return "Merchant";
+    }
+    if (appearanceId == "lore")
+    {
+        return "Lorekeeper";
+    }
+    if (appearanceId == "quest")
+    {
+        return "Quest Giver";
+    }
+    return "NPC";
+}
+
+} // namespace
+
+std::vector<EntityRenderer::WorldNameplate> EntityRenderer::visibleNameplates(
+    int cameraTileX,
+    int cameraTileY,
+    int viewTilesWide,
+    int viewTilesHigh) const
+{
+    std::vector<WorldNameplate> plates;
+    for (const auto& [_, entity] : entities_)
+    {
+        if (entity.entityType == 0 || entity.isLocalPlayer)
+        {
+            continue;
+        }
+        if (entity.tileX < cameraTileX - 1
+            || entity.tileY < cameraTileY - 1
+            || entity.tileX > cameraTileX + viewTilesWide
+            || entity.tileY > cameraTileY + viewTilesHigh)
+        {
+            continue;
+        }
+
+        WorldNameplate plate;
+        plate.tileX = entity.tileX;
+        plate.tileY = entity.tileY;
+        plate.name = entity.name.empty() ? roleLabelForAppearance(entity.appearanceId) : entity.name;
+        plate.role = roleLabelForAppearance(entity.appearanceId);
+        plate.appearanceId = entity.appearanceId;
+        plates.push_back(std::move(plate));
+    }
+    return plates;
+}
+
+std::optional<EntityRenderer::WorldNameplate> EntityRenderer::nearestNpcNameplate(
+    int32_t tileX,
+    int32_t tileY,
+    int32_t maxDistance) const
+{
+    const auto entityId = nearestNpcEntity(tileX, tileY, maxDistance);
+    if (!entityId.has_value())
+    {
+        return std::nullopt;
+    }
+
+    const auto it = entities_.find(*entityId);
+    if (it == entities_.end())
+    {
+        return std::nullopt;
+    }
+
+    WorldNameplate plate;
+    plate.tileX = it->second.tileX;
+    plate.tileY = it->second.tileY;
+    plate.name = it->second.name.empty()
+        ? roleLabelForAppearance(it->second.appearanceId)
+        : it->second.name;
+    plate.role = roleLabelForAppearance(it->second.appearanceId);
+    plate.appearanceId = it->second.appearanceId;
+    return plate;
 }
 
 std::optional<uint32_t> EntityRenderer::npcEntityAtTile(int32_t tileX, int32_t tileY) const

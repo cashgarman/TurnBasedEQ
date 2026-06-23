@@ -55,6 +55,26 @@ public:
 
     std::vector<MinimapDot> minimapDots() const;
 
+    struct WorldNameplate
+    {
+        int32_t tileX = 0;
+        int32_t tileY = 0;
+        std::string name;
+        std::string role;
+        std::string appearanceId;
+    };
+
+    std::vector<WorldNameplate> visibleNameplates(
+        int cameraTileX,
+        int cameraTileY,
+        int viewTilesWide,
+        int viewTilesHigh) const;
+
+    std::optional<WorldNameplate> nearestNpcNameplate(
+        int32_t tileX,
+        int32_t tileY,
+        int32_t maxDistance) const;
+
 private:
     struct EntityVisual
     {
