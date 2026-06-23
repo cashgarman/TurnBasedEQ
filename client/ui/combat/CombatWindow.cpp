@@ -38,6 +38,16 @@ uint32_t defaultAllyTarget(
 
 } // namespace
 
+void CombatWindow::setSpriteRenderer(SpriteRenderer* sprites)
+{
+    sprites_ = sprites;
+}
+
+void CombatWindow::updateAnimation(uint64_t tickMs)
+{
+    animTickMs_ = tickMs;
+}
+
 void CombatWindow::reset()
 {
     active_ = false;
@@ -103,6 +113,12 @@ void CombatWindow::applyEvent(const net::CombatEventPayload& event)
         {
             combatLog_.pop_front();
         }
+    }
+
+    if (event.actorSlot != 0 && (event.eventType == 1 || event.eventType == 2))
+    {
+        attackFlashSlot_ = event.actorSlot;
+        attackFlashUntilMs_ = animTickMs_ + 250;
     }
 }
 
@@ -214,6 +230,65 @@ void CombatWindow::applySkillGain(const net::SkillGainPayload& gain)
     combatLog_.push_back(gain.message);
 }
 
+EntitySpriteRequest CombatWindow::spriteRequestForParticipant(
+    const net::CombatParticipantPayload& participant) const
+{
+    EntitySpriteRequest request;
+    if (!participant.mobId.empty())
+    {
+        request.entityType = 2;
+        request.appearanceId = participant.mobId;
+    }
+    else
+    {
+        request.entityType = 0;
+        request.raceId = participant.raceId.empty() ? "human" : participant.raceId;
+        request.classId = participant.classId;
+    }
+
+    const bool attackFlash = participant.combatSlot == attackFlashSlot_
+        && animTickMs_ < attackFlashUntilMs_;
+    request.clipId = attackFlash ? render::AnimationClipId::Walk : render::AnimationClipId::Idle;
+    request.facing = participant.side == 1 ? render::Facing::West : render::Facing::East;
+    request.frameIndex = render::frameIndexForClip(
+        animTickMs_,
+        request.clipId,
+        static_cast<int>(participant.combatSlot % 4));
+    return request;
+}
+
+void CombatWindow::drawParticipantSprite(
+    const net::CombatParticipantPayload& participant,
+    bool isCurrentActor)
+{
+    if (sprites_ == nullptr)
+    {
+        return;
+    }
+
+    SDL_Texture* texture = sprites_->textureForEntity(spriteRequestForParticipant(participant));
+    if (texture == nullptr)
+    {
+        return;
+    }
+
+    if (isCurrentActor)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 220, 80, 255));
+    }
+
+    ImGui::Image(
+        reinterpret_cast<ImTextureID>(texture),
+        ImVec2(48.0f, 48.0f),
+        ImVec2(0.0f, 0.0f),
+        ImVec2(1.0f, 1.0f));
+
+    if (isCurrentActor)
+    {
+        ImGui::PopStyleColor();
+    }
+}
+
 void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int displayWidth, int displayHeight)
 {
     if (!active_)
@@ -250,6 +325,35 @@ void CombatWindow::draw(tbeq::ui::GameWindow& window, bool& visible, int display
     ImGui::Text("Mana: %u / %u", playerMana_, playerMaxMana_);
     ImGui::Separator();
 
+    ImGui::Text("Combatants");
+    if (ImGui::BeginTable("CombatSprites", static_cast<int>(turnOrder_.size()), ImGuiTableFlags_SizingFixedFit))
+    {
+        for (uint32_t slot : turnOrder_)
+        {
+            ImGui::TableSetupColumn("sprite", ImGuiTableColumnFlags_WidthFixed, 52.0f);
+        }
+        ImGui::TableNextRow();
+        for (uint32_t slot : turnOrder_)
+        {
+            const net::CombatParticipantPayload* participant = nullptr;
+            for (const auto& entry : participants_)
+            {
+                if (entry.combatSlot == slot)
+                {
+                    participant = &entry;
+                    break;
+                }
+            }
+            ImGui::TableNextColumn();
+            if (participant != nullptr && participant->isAlive)
+            {
+                drawParticipantSprite(*participant, slot == currentActorSlot_);
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Separator();
     ImGui::Text("Turn order");
     for (uint32_t slot : turnOrder_)
     {

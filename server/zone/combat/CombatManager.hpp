@@ -34,6 +34,7 @@ public:
         std::string characterId;
         std::string name;
         std::string classId;
+        std::string raceId;
         uint16_t level = 1;
         CharacterState* state = nullptr;
         bool* inCombat = nullptr;

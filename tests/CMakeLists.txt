@@ -61,6 +61,7 @@ target_sources(tbeq_tests_unit PRIVATE
 
 target_include_directories(tbeq_tests_unit
     PRIVATE
+        ${CMAKE_SOURCE_DIR}/client
         ${CMAKE_SOURCE_DIR}/client/ui
         ${CMAKE_SOURCE_DIR}/client/render
         ${CMAKE_SOURCE_DIR}/server/common

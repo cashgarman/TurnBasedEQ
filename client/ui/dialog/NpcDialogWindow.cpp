@@ -61,7 +61,10 @@ void NpcDialogWindow::draw(
     }
     ImGui::EndChild();
 
-    if (ImGui::Button("Close", ImVec2(120.0f, 0.0f)))
+    constexpr float kCloseButtonWidth = 120.0f;
+    const float centerOffset = (ImGui::GetContentRegionAvail().x - kCloseButtonWidth) * 0.5f;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + centerOffset);
+    if (ImGui::Button("Close", ImVec2(kCloseButtonWidth, 0.0f)))
     {
         visible = false;
         window.state().visible = false;

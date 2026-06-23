@@ -94,6 +94,7 @@ struct CombatParticipant
     std::string mobId;
     std::string name;
     std::string classId;
+    std::string raceId;
     CombatSide side = CombatSide::Player;
     uint16_t level = 1;
     uint16_t hp = 0;

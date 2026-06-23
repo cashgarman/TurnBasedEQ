@@ -23,8 +23,8 @@ TEST_CASE("combat initiative orders higher agility first with fixed rng", "[comb
     tbeq::CharacterState slowState = tbeq::CharacterState::createDefault("warrior", 1);
     slowState.agi = 10;
 
-    combat.addPlayer("fast", "Fast", "warrior", 1, fastState, true, false);
-    combat.addPlayer("slow", "Slow", "warrior", 1, slowState, true, false);
+    combat.addPlayer("fast", "Fast", "warrior", "human", 1, fastState, true, false);
+    combat.addPlayer("slow", "Slow", "warrior", "human", 1, slowState, true, false);
     combat.rollInitiative();
 
     REQUIRE(combat.turnOrder().size() == 2);
@@ -43,7 +43,7 @@ TEST_CASE("combat initiative includes all living participants", "[combat]")
 
     tbeq::combat::CombatInstance combat(2, resolver, catalog, spells, abilities, rng);
     tbeq::CharacterState playerState = tbeq::CharacterState::createDefault("warrior", 1);
-    combat.addPlayer("hero", "Hero", "warrior", 1, playerState, true, false);
+    combat.addPlayer("hero", "Hero", "warrior", "human", 1, playerState, true, false);
 
     tbeq::content::MobDef mob;
     mob.id = "test_rat";

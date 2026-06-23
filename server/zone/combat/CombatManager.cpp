@@ -56,6 +56,8 @@ net::CombatParticipantPayload CombatManager::toPayload(const combat::CombatParti
     payload.isPlayerControlled = participant.isPlayerControlled;
     payload.isAiCompanion = participant.isAiCompanion;
     payload.classId = participant.classId;
+    payload.mobId = participant.mobId;
+    payload.raceId = participant.mobId.empty() ? participant.raceId : std::string{};
     return payload;
 }
 
@@ -254,6 +256,7 @@ void CombatManager::addPlayerToCombat(ActiveCombat& combat, PlayerView& player, 
         player.characterId,
         player.name,
         player.classId,
+        player.raceId.empty() ? std::string{"human"} : player.raceId,
         player.level,
         *player.state,
         playerControlled,

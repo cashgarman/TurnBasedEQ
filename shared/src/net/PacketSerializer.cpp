@@ -451,6 +451,8 @@ ByteWriter serialize(const CombatParticipantPayload& payload)
     writer.writeBool(payload.isPlayerControlled);
     writer.writeBool(payload.isAiCompanion);
     writer.writeString(payload.classId);
+    writer.writeString(payload.raceId);
+    writer.writeString(payload.mobId);
     return writer;
 }
 
@@ -1274,7 +1276,9 @@ bool readCombatParticipant(ByteReader& reader, CombatParticipantPayload& out)
         && reader.readBool(out.isAlive)
         && reader.readBool(out.isPlayerControlled)
         && reader.readBool(out.isAiCompanion)
-        && reader.readString(out.classId);
+        && reader.readString(out.classId)
+        && reader.readString(out.raceId)
+        && reader.readString(out.mobId);
 }
 
 bool readEmbeddedCombatParticipant(ByteReader& reader, CombatParticipantPayload& out)

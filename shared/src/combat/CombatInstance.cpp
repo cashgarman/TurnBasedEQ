@@ -135,6 +135,7 @@ void CombatInstance::addPlayer(
     const std::string& characterId,
     const std::string& name,
     const std::string& classId,
+    const std::string& raceId,
     uint16_t level,
     CharacterState& state,
     bool playerControlled,
@@ -145,6 +146,7 @@ void CombatInstance::addPlayer(
     participant.characterId = characterId;
     participant.name = name;
     participant.classId = classId;
+    participant.raceId = raceId;
     participant.side = CombatSide::Player;
     participant.level = level;
     participant.hp = state.hp;

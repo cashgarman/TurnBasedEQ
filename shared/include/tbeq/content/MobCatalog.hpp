@@ -36,6 +36,7 @@ public:
 
     const MobDef* findMob(const std::string& mobId) const;
     std::vector<std::string> resolveMobTable(const std::string& tableId) const;
+    std::vector<std::string> allMobIds() const;
 
 private:
     std::unordered_map<std::string, MobDef> mobs_;

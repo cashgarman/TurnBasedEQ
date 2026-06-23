@@ -48,6 +48,7 @@ bool TileDefCatalog::loadFromFile(const std::filesystem::path& path)
         def.category = entry.value("category", def.id);
         def.autotileGroup = entry.value("autotileGroup", def.category);
         def.animation = entry.value("animation", "none");
+        def.frameCount = entry.value("frameCount", 0);
         def.collision = parseCollision(entry.value("collision", "walkable"));
         defs_[def.id] = std::move(def);
     }

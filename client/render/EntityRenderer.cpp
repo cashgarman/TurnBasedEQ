@@ -6,40 +6,40 @@
 namespace tbeq::client
 {
 
-EntityRenderer::EntityRenderer(SDL_Renderer* renderer)
-    : renderer_(renderer)
+EntityRenderer::EntityRenderer(SpriteRenderer& sprites)
+    : sprites_(sprites)
 {
 }
 
-EntityRenderer::~EntityRenderer()
-{
-    clear();
-}
+EntityRenderer::~EntityRenderer() = default;
 
 void EntityRenderer::setStyleCatalog(const render::TileStyleProfile* style)
 {
     style_ = style;
+    sprites_.setStyle(style);
 }
 
 void EntityRenderer::setSpriteCatalog(const render::EntitySpriteCatalog* catalog)
 {
     catalog_ = catalog;
+    sprites_.setSpriteCatalog(catalog);
 }
 
 void EntityRenderer::setItemCatalog(const content::ItemCatalog* catalog)
 {
     itemCatalog_ = catalog;
+    sprites_.setItemCatalog(catalog);
 }
 
 void EntityRenderer::clear()
 {
-    for (auto& entry : textures_)
-    {
-        SDL_DestroyTexture(entry.second);
-    }
-    textures_.clear();
     entities_.clear();
     hasLocalPlayer_ = false;
+}
+
+void EntityRenderer::updateAnimation(uint64_t tickMs)
+{
+    animTickMs_ = tickMs;
 }
 
 void EntityRenderer::upsertEntity(EntityVisual entity)
@@ -49,12 +49,21 @@ void EntityRenderer::upsertEntity(EntityVisual entity)
     {
         entity.prevTileX = it->second.tileX;
         entity.prevTileY = it->second.tileY;
+        entity.facing = it->second.facing;
     }
     else
     {
         entity.prevTileX = entity.tileX;
         entity.prevTileY = entity.tileY;
     }
+
+    if (entity.tileX != entity.prevTileX || entity.tileY != entity.prevTileY)
+    {
+        entity.facing = render::facingFromDelta(
+            entity.tileX - entity.prevTileX,
+            entity.tileY - entity.prevTileY);
+    }
+
     entities_[entity.entityId] = std::move(entity);
 }
 
@@ -76,6 +85,7 @@ void EntityRenderer::setLocalPlayer(
     localPlayer_.tileY = tileY;
     localPlayer_.prevTileX = tileX;
     localPlayer_.prevTileY = tileY;
+    localPlayer_.facing = render::Facing::South;
     localPlayer_.isLocalPlayer = true;
     hasLocalPlayer_ = entityId != 0;
     mergeLocalPlayer();
@@ -92,6 +102,12 @@ void EntityRenderer::updateLocalPlayerPosition(int32_t tileX, int32_t tileY)
     localPlayer_.prevTileY = localPlayer_.tileY;
     localPlayer_.tileX = tileX;
     localPlayer_.tileY = tileY;
+    if (tileX != localPlayer_.prevTileX || tileY != localPlayer_.prevTileY)
+    {
+        localPlayer_.facing = render::facingFromDelta(
+            tileX - localPlayer_.prevTileX,
+            tileY - localPlayer_.prevTileY);
+    }
     mergeLocalPlayer();
 }
 
@@ -124,6 +140,9 @@ void EntityRenderer::mergeLocalPlayer()
 
 void EntityRenderer::applySnapshot(const net::EntitySnapshotPayload& snapshot)
 {
+    std::unordered_map<uint32_t, EntityVisual> preserved;
+    preserved.swap(entities_);
+
     for (const auto& entity : snapshot.entities)
     {
         EntityVisual visual;
@@ -140,95 +159,64 @@ void EntityRenderer::applySnapshot(const net::EntitySnapshotPayload& snapshot)
         visual.tileX = entity.tileX;
         visual.tileY = entity.tileY;
         visual.isLocalPlayer = hasLocalPlayer_ && entity.entityId == localPlayer_.entityId;
-        upsertEntity(std::move(visual));
+
+        const auto prev = preserved.find(entity.entityId);
+        if (prev != preserved.end())
+        {
+            visual.prevTileX = prev->second.tileX;
+            visual.prevTileY = prev->second.tileY;
+            visual.facing = prev->second.facing;
+        }
+        else
+        {
+            visual.prevTileX = entity.tileX;
+            visual.prevTileY = entity.tileY;
+        }
+
+        if (visual.tileX != visual.prevTileX || visual.tileY != visual.prevTileY)
+        {
+            visual.facing = render::facingFromDelta(
+                visual.tileX - visual.prevTileX,
+                visual.tileY - visual.prevTileY);
+        }
+
+        entities_[entity.entityId] = std::move(visual);
     }
 
     mergeLocalPlayer();
 }
 
-int EntityRenderer::walkFrameForEntity(const EntityVisual& entity) const
+render::AnimationClipId EntityRenderer::clipForEntity(const EntityVisual& entity) const
 {
     if (entity.tileX != entity.prevTileX || entity.tileY != entity.prevTileY)
     {
-        return (entity.tileX + entity.tileY) & 1;
+        return render::AnimationClipId::Walk;
     }
-    return 0;
+    return render::AnimationClipId::Idle;
 }
 
-SDL_Texture* EntityRenderer::textureForEntity(const EntityVisual& entity, int frameIndex)
+int EntityRenderer::frameIndexForEntity(const EntityVisual& entity) const
 {
-    if (style_ == nullptr || catalog_ == nullptr)
-    {
-        return nullptr;
-    }
+    const render::AnimationClipId clip = clipForEntity(entity);
+    const int phaseOffset = static_cast<int>(entity.entityId % 4);
+    return render::frameIndexForClip(animTickMs_, clip, phaseOffset);
+}
 
-    TextureKey key{
-        entity.entityType,
-        entity.raceId,
-        entity.classId,
-        entity.appearanceId,
-        frameIndex,
-        entity.equippedWeaponItemId,
-        entity.equippedHeadItemId,
-        entity.equippedChestItemId,
-        entity.equippedHandsItemId};
-    const auto it = textures_.find(key);
-    if (it != textures_.end())
-    {
-        return it->second;
-    }
-
-    render::GearLayerTints gearTints;
-    if (itemCatalog_ != nullptr)
-    {
-        const auto tintForItem = [this](const std::string& itemId) -> std::string
-        {
-            if (itemId.empty())
-            {
-                return {};
-            }
-            const content::ItemDef* item = itemCatalog_->findItem(itemId);
-            return (item != nullptr && !item->spriteTint.empty()) ? item->spriteTint : std::string{};
-        };
-
-        gearTints.weapon = tintForItem(entity.equippedWeaponItemId);
-        gearTints.head = tintForItem(entity.equippedHeadItemId);
-        gearTints.chest = tintForItem(entity.equippedChestItemId);
-        gearTints.hands = tintForItem(entity.equippedHandsItemId);
-    }
-
-    const auto pixels = generator_.generateFrame(
-        entity.entityType,
-        entity.raceId,
-        entity.classId,
-        entity.appearanceId,
-        *style_,
-        *catalog_,
-        frameIndex,
-        gearTints);
-
-    SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
-        const_cast<uint8_t*>(pixels.data()),
-        render::SpriteGenerator::kSpriteSize,
-        render::SpriteGenerator::kSpriteSize,
-        32,
-        render::SpriteGenerator::kSpriteSize * 4,
-        0x000000FF,
-        0x0000FF00,
-        0x00FF0000,
-        0xFF000000);
-    if (surface == nullptr)
-    {
-        return nullptr;
-    }
-
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer_, surface);
-    SDL_FreeSurface(surface);
-    if (texture != nullptr)
-    {
-        textures_.emplace(key, texture);
-    }
-    return texture;
+EntitySpriteRequest EntityRenderer::spriteRequestForEntity(const EntityVisual& entity) const
+{
+    EntitySpriteRequest request;
+    request.entityType = entity.entityType;
+    request.raceId = entity.raceId;
+    request.classId = entity.classId;
+    request.appearanceId = entity.appearanceId;
+    request.clipId = clipForEntity(entity);
+    request.facing = entity.facing;
+    request.frameIndex = frameIndexForEntity(entity);
+    request.equippedWeaponItemId = entity.equippedWeaponItemId;
+    request.equippedHeadItemId = entity.equippedHeadItemId;
+    request.equippedChestItemId = entity.equippedChestItemId;
+    request.equippedHandsItemId = entity.equippedHandsItemId;
+    return request;
 }
 
 void EntityRenderer::render(int cameraTileX, int cameraTileY, int viewTilesWide, int viewTilesHigh)
@@ -264,11 +252,11 @@ void EntityRenderer::render(int cameraTileX, int cameraTileY, int viewTilesWide,
             return a->tileX < b->tileX;
         });
 
+    SDL_Renderer* renderer = sprites_.cache().renderer();
     const int tileSize = render::TileGenerator::kTileSize;
     for (const EntityVisual* entity : drawOrder)
     {
-        const int frameIndex = walkFrameForEntity(*entity);
-        SDL_Texture* texture = textureForEntity(*entity, frameIndex);
+        SDL_Texture* texture = sprites_.textureForEntity(spriteRequestForEntity(*entity));
         if (texture == nullptr)
         {
             continue;
@@ -282,50 +270,57 @@ void EntityRenderer::render(int cameraTileX, int cameraTileY, int viewTilesWide,
             tileSize,
             tileSize};
 
+        SDL_RenderCopy(renderer, texture, nullptr, &dest);
+
+        if (!drawEntityOutlines_)
+        {
+            continue;
+        }
+
         if (entity->isLocalPlayer)
         {
-            SDL_SetTextureColorMod(texture, 255, 255, 255);
-            SDL_SetTextureAlphaMod(texture, 255);
-            SDL_RenderCopy(renderer_, texture, nullptr, &dest);
-
-            SDL_SetRenderDrawColor(renderer_, 240, 240, 120, 255);
+            SDL_SetRenderDrawColor(renderer, 240, 240, 120, 255);
             SDL_Rect outline = dest;
-            SDL_RenderDrawRect(renderer_, &outline);
+            SDL_RenderDrawRect(renderer, &outline);
             outline.x += 1;
             outline.y += 1;
             outline.w -= 2;
             outline.h -= 2;
-            SDL_RenderDrawRect(renderer_, &outline);
+            SDL_RenderDrawRect(renderer, &outline);
         }
-        else
+        else if (entity->entityType == 1)
         {
-            SDL_SetTextureColorMod(texture, 255, 255, 255);
-            SDL_SetTextureAlphaMod(texture, 255);
-            SDL_RenderCopy(renderer_, texture, nullptr, &dest);
-
-            if (entity->entityType != 0)
+            if (entity->appearanceId == "merchant")
             {
-                if (entity->appearanceId == "merchant")
-                {
-                    SDL_SetRenderDrawColor(renderer_, 255, 210, 80, 255);
-                }
-                else if (entity->appearanceId == "lore")
-                {
-                    SDL_SetRenderDrawColor(renderer_, 140, 180, 255, 255);
-                }
-                else
-                {
-                    SDL_SetRenderDrawColor(renderer_, 200, 160, 255, 255);
-                }
-
-                SDL_Rect outline = dest;
-                SDL_RenderDrawRect(renderer_, &outline);
-                outline.x += 1;
-                outline.y += 1;
-                outline.w -= 2;
-                outline.h -= 2;
-                SDL_RenderDrawRect(renderer_, &outline);
+                SDL_SetRenderDrawColor(renderer, 255, 210, 80, 255);
             }
+            else if (entity->appearanceId == "lore")
+            {
+                SDL_SetRenderDrawColor(renderer, 140, 180, 255, 255);
+            }
+            else
+            {
+                SDL_SetRenderDrawColor(renderer, 200, 160, 255, 255);
+            }
+
+            SDL_Rect outline = dest;
+            SDL_RenderDrawRect(renderer, &outline);
+            outline.x += 1;
+            outline.y += 1;
+            outline.w -= 2;
+            outline.h -= 2;
+            SDL_RenderDrawRect(renderer, &outline);
+        }
+        else if (entity->entityType == 2)
+        {
+            SDL_SetRenderDrawColor(renderer, 220, 80, 80, 255);
+            SDL_Rect outline = dest;
+            SDL_RenderDrawRect(renderer, &outline);
+            outline.x += 1;
+            outline.y += 1;
+            outline.w -= 2;
+            outline.h -= 2;
+            SDL_RenderDrawRect(renderer, &outline);
         }
     }
 }
@@ -391,8 +386,16 @@ std::vector<EntityRenderer::WorldNameplate> EntityRenderer::visibleNameplates(
         WorldNameplate plate;
         plate.tileX = entity.tileX;
         plate.tileY = entity.tileY;
-        plate.name = entity.name.empty() ? roleLabelForAppearance(entity.appearanceId) : entity.name;
-        plate.role = roleLabelForAppearance(entity.appearanceId);
+        if (entity.entityType == 2)
+        {
+            plate.name = entity.name.empty() ? entity.appearanceId : entity.name;
+            plate.role = "Mob";
+        }
+        else
+        {
+            plate.name = entity.name.empty() ? roleLabelForAppearance(entity.appearanceId) : entity.name;
+            plate.role = roleLabelForAppearance(entity.appearanceId);
+        }
         plate.appearanceId = entity.appearanceId;
         plates.push_back(std::move(plate));
     }
@@ -431,7 +434,7 @@ std::optional<uint32_t> EntityRenderer::npcEntityAtTile(int32_t tileX, int32_t t
 {
     for (const auto& [_, entity] : entities_)
     {
-        if (entity.entityType != 0 && entity.tileX == tileX && entity.tileY == tileY)
+        if (entity.entityType == 1 && entity.tileX == tileX && entity.tileY == tileY)
         {
             return entity.entityId;
         }
@@ -449,7 +452,7 @@ std::optional<uint32_t> EntityRenderer::nearestNpcEntity(
 
     for (const auto& [_, entity] : entities_)
     {
-        if (entity.entityType == 0)
+        if (entity.entityType != 1)
         {
             continue;
         }

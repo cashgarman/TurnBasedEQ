@@ -85,12 +85,12 @@ TEST_CASE("cleric heal spell restores ally hp", "[combat][spells]")
     clericState.skills["alteration"] = {50, 0};
     clericState.agi = 200;
     clericState.mana = 100;
-    combat.addPlayer("cleric", "Cleric", "cleric", 5, clericState, true, false);
+    combat.addPlayer("cleric", "Cleric", "cleric", "human", 5, clericState, true, false);
 
     tbeq::CharacterState allyState = tbeq::CharacterState::createDefault("warrior", 5);
     allyState.hp = 20;
     allyState.agi = 1;
-    combat.addPlayer("warrior", "Warrior", "warrior", 5, allyState, true, false);
+    combat.addPlayer("warrior", "Warrior", "warrior", "human", 5, allyState, true, false);
 
     combat.rollInitiative();
 

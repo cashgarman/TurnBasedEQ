@@ -204,6 +204,8 @@ struct CombatParticipantPayload
     bool isPlayerControlled = false;
     bool isAiCompanion = false;
     std::string classId;
+    std::string raceId;
+    std::string mobId;
 };
 
 struct CombatStartPayload

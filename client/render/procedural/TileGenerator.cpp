@@ -68,6 +68,11 @@ Rgba lerpColor(const Rgba& a, const Rgba& b, float t)
         255};
 }
 
+bool isEdgeTile(uint32_t autotileVariant)
+{
+    return autotileVariant != 15;
+}
+
 } // namespace
 
 bool TileStyleCatalog::loadFromFile(const std::filesystem::path& path)
@@ -168,7 +173,6 @@ std::vector<uint8_t> TileGenerator::generateFrame(
     int frameIndex,
     int frameCount) const
 {
-    (void)tileId;
     const Rgba base = parseHexColor(style.baseColor);
     const Rgba accent = parseHexColor(style.accentColor);
     const Rgba shadow = parseHexColor(style.shadowColor);
@@ -193,18 +197,84 @@ std::vector<uint8_t> TileGenerator::generateFrame(
             {
                 const double wave = std::sin((x + y + frameIndex) * 0.35);
                 color = lerpColor(shadow, highlight, static_cast<float>((wave + 1.0) * 0.35 + noise * 0.2));
+                if (isEdgeTile(autotileVariant) && (x == 0 || y == 0 || x == kTileSize - 1 || y == kTileSize - 1))
+                {
+                    color = lerpColor(color, highlight, 0.45f);
+                }
             }
             else if (category == "portal")
             {
                 const double ring = std::abs(std::sin((x - 16) * 0.25 + (y - 16) * 0.25 + frameIndex * 0.5));
                 color = lerpColor(accent, highlight, static_cast<float>(ring));
+                if (((x + y + frameIndex) % 5) == 0)
+                {
+                    color = lerpColor(color, highlight, 0.6f);
+                }
             }
             else if (category == "grass" && frameCount > 1)
             {
-                const int offset = (frameIndex % 2 == 0) ? 0 : 1;
-                color = lerpColor(color, highlight, static_cast<float>((x + offset) % 7 == 0 ? 0.25 : 0.0));
+                const int sway = static_cast<int>(std::sin(frameIndex * 0.8 + x * 0.2) * 1.5);
+                color = lerpColor(color, highlight, static_cast<float>((x + sway) % 7 == 0 ? 0.25 : 0.0));
+                if (tileId == "grass_flowers" && (x + y + frameIndex) % 11 == 0)
+                {
+                    color = lerpColor(color, accent, 0.55f);
+                }
+                if (tileId == "bush" && frameCount > 1)
+                {
+                    const double rustle = std::sin((x + frameIndex) * 0.4);
+                    color = lerpColor(color, shadow, static_cast<float>(rustle > 0.6 ? 0.15 : 0.0));
+                }
+                if (tileId == "tree_canopy")
+                {
+                    color = lerpColor(shadow, accent, static_cast<float>(0.35 + noise * 0.25));
+                }
             }
-            else if (autotileVariant != 15 && (x == 0 || y == 0 || x == kTileSize - 1 || y == kTileSize - 1))
+            else if (category == "lava" && frameCount > 1)
+            {
+                const double bubble = std::sin((x * 0.5 + y * 0.3 + frameIndex) * 0.7);
+                color = lerpColor(shadow, highlight, static_cast<float>((bubble + 1.0) * 0.4));
+                if ((x + y + frameIndex) % 9 == 0)
+                {
+                    color = lerpColor(color, highlight, 0.7f);
+                }
+            }
+            else if (category == "stone" || category == "cobble")
+            {
+                if ((x % 4 == 0 || y % 4 == 0) && noise > 0.55)
+                {
+                    color = lerpColor(color, shadow, 0.25f);
+                }
+                if (tileId == "stone_wall" && frameCount > 1)
+                {
+                    const double flicker = std::sin(frameIndex * 0.9 + x * 0.1);
+                    color = lerpColor(color, highlight, static_cast<float>(flicker > 0.7 ? 0.12 : 0.0));
+                }
+            }
+            else if (category == "wood")
+            {
+                if (y % 5 == 0)
+                {
+                    color = lerpColor(color, shadow, 0.2f);
+                }
+                if ((x + y) % 13 == 0)
+                {
+                    color = lerpColor(color, accent, 0.35f);
+                }
+            }
+            else if (category == "ice" || category == "snow")
+            {
+                if (frameCount > 1 && (x + y + frameIndex) % 8 == 0)
+                {
+                    color = lerpColor(color, highlight, 0.55f);
+                }
+            }
+            else if (category == "swamp" && frameCount > 1)
+            {
+                const double ripple = std::sin((x + y + frameIndex) * 0.25);
+                color = lerpColor(color, accent, static_cast<float>((ripple + 1.0) * 0.15));
+            }
+
+            if (isEdgeTile(autotileVariant) && (x == 0 || y == 0 || x == kTileSize - 1 || y == kTileSize - 1))
             {
                 color = lerpColor(color, shadow, 0.35f);
             }

@@ -21,6 +21,7 @@ struct TileDef
     std::string category;
     std::string autotileGroup;
     std::string animation;
+    int frameCount = 0;
     TileCollision collision = TileCollision::Walkable;
 };
 

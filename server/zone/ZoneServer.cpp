@@ -1,6 +1,7 @@
 #include "ZoneServer.hpp"
 
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 
 #include <spdlog/spdlog.h>
@@ -161,6 +162,7 @@ void ZoneServer::loadZoneSpawns()
         spawn.mobTable = record.mobTable;
         spawn.respawnSeconds = record.respawnSeconds;
         spawn.active = true;
+        spawn.entityId = allocateEntityId();
         spawns_.push_back(std::move(spawn));
     }
 }
@@ -382,6 +384,30 @@ net::EntitySnapshotPayload ZoneServer::buildEntitySnapshot(uint32_t excludeEntit
         entity.tileY = ai.tileY;
         entity.classId = ai.classId;
         entity.appearanceId = "ai_companion";
+        snapshot.entities.push_back(std::move(entity));
+    }
+
+    for (const auto& spawn : spawns_)
+    {
+        if (!spawn.active)
+        {
+            continue;
+        }
+
+        const auto mobIds = mobCatalog_.resolveMobTable(spawn.mobTable);
+        if (mobIds.empty())
+        {
+            continue;
+        }
+
+        const content::MobDef* mobDef = mobCatalog_.findMob(mobIds.front());
+        net::EntityStatePayload entity;
+        entity.entityId = spawn.entityId;
+        entity.name = mobDef != nullptr ? mobDef->name : mobIds.front();
+        entity.entityType = 2;
+        entity.tileX = spawn.tileX;
+        entity.tileY = spawn.tileY;
+        entity.appearanceId = mobIds.front();
         snapshot.entities.push_back(std::move(entity));
     }
 
@@ -820,20 +846,50 @@ void ZoneServer::handleMoveIntent(
         net::serialize(result),
         packet.header.sessionTokenHash);
 
-        if (result.ok)
+    if (result.ok && player != nullptr)
+    {
+        updateSpawnRespawns();
+        tryAggro(*player);
+        for (auto& [_, ai] : aiCompanions_)
         {
-            tryAggro(*player);
-            for (auto& [_, ai] : aiCompanions_)
+            if (ai.leaderCharacterId == player->characterId)
             {
-                if (ai.leaderCharacterId == player->characterId)
-                {
-                    ai.tileX = player->tileX;
-                    ai.tileY = player->tileY;
-                }
+                ai.tileX = player->tileX;
+                ai.tileY = player->tileY;
             }
-            broadcastEntitySnapshot();
+        }
+        broadcastEntitySnapshot();
+    }
+}
+
+void ZoneServer::updateSpawnRespawns()
+{
+    const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        for (auto& spawn : spawns_)
+        {
+            if (spawn.active || spawn.respawnAtUnix <= 0)
+            {
+                continue;
+            }
+            if (now >= spawn.respawnAtUnix)
+            {
+                spawn.active = true;
+                spawn.respawnAtUnix = 0;
+                changed = true;
+            }
         }
     }
+
+    if (changed)
+    {
+        broadcastEntitySnapshot();
+    }
+}
 
 CombatManager::PlayerView ZoneServer::makePlayerView(PlayerEntity& player)
 {
@@ -841,6 +897,7 @@ CombatManager::PlayerView ZoneServer::makePlayerView(PlayerEntity& player)
     view.characterId = player.characterId;
     view.name = player.name;
     view.classId = player.classId;
+    view.raceId = player.raceId;
     view.level = player.level;
     view.state = &player.characterState;
     view.inCombat = &player.inCombat;
@@ -856,6 +913,7 @@ CombatManager::PlayerView ZoneServer::makeAiView(AiPartyMember& ai)
     view.characterId = ai.characterId;
     view.name = ai.name;
     view.classId = ai.classId;
+    view.raceId = "human";
     view.level = ai.level;
     view.state = &ai.characterState;
     view.inCombat = &ai.inCombat;
@@ -963,6 +1021,7 @@ void ZoneServer::tryAggro(PlayerEntity& player)
         return;
     }
 
+    std::lock_guard<std::mutex> lock(stateMutex_);
     for (auto& spawn : spawns_)
     {
         if (!spawn.active)
@@ -981,12 +1040,16 @@ void ZoneServer::tryAggro(PlayerEntity& player)
         if (combatManager_->tryStartSpawnCombat(view, spawn.mobTable))
         {
             spawn.active = false;
+            spawn.respawnAtUnix = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count()
+                + spawn.respawnSeconds;
             spdlog::info(
                 "Combat started for {} at spawn {} ({}, {})",
                 player.characterId,
                 spawn.spawnId,
                 spawn.tileX,
                 spawn.tileY);
+            broadcastEntitySnapshot();
             return;
         }
     }

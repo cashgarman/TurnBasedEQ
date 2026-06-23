@@ -77,10 +77,12 @@ private:
     struct ZoneSpawnState
     {
         std::string spawnId;
+        uint32_t entityId = 0;
         int32_t tileX = 0;
         int32_t tileY = 0;
         std::string mobTable;
         int32_t respawnSeconds = 60;
+        int64_t respawnAtUnix = 0;
         bool active = true;
     };
 
@@ -157,6 +159,7 @@ private:
     void deliverSayChat(const PlayerEntity& sender, const std::string& text);
     void deliverSystemMessage(const PlayerEntity& player, const std::string& text);
     void tryAggro(PlayerEntity& player);
+    void updateSpawnRespawns();
     CombatManager::PlayerView makePlayerView(PlayerEntity& player);
     CombatManager::PlayerView makeAiView(AiPartyMember& ai);
     std::vector<CombatManager::PlayerView> findAiCompanionsForLeader(const std::string& leaderCharacterId);

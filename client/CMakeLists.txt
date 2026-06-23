@@ -6,6 +6,8 @@ add_executable(tbeq_client
     render/procedural/TileGenerator.cpp
     render/procedural/SpriteGenerator.cpp
     render/procedural/ItemIconGenerator.cpp
+    render/TextureCache.cpp
+    render/SpriteRenderer.cpp
     render/TilemapRenderer.cpp
     render/EntityRenderer.cpp
     ui/GameWindow.cpp

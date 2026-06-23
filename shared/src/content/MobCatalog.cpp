@@ -95,4 +95,15 @@ std::vector<std::string> MobCatalog::resolveMobTable(const std::string& tableId)
     return it->second;
 }
 
+std::vector<std::string> MobCatalog::allMobIds() const
+{
+    std::vector<std::string> ids;
+    ids.reserve(mobs_.size());
+    for (const auto& [mobId, _] : mobs_)
+    {
+        ids.push_back(mobId);
+    }
+    return ids;
+}
+
 } // namespace tbeq::content

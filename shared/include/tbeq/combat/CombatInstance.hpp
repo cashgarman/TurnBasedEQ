@@ -52,6 +52,7 @@ public:
         const std::string& characterId,
         const std::string& name,
         const std::string& classId,
+        const std::string& raceId,
         uint16_t level,
         CharacterState& state,
         bool playerControlled,

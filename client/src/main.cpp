@@ -36,7 +36,10 @@
 #include "ui/merchant/MerchantWindow.hpp"
 #include "ui/look/LookWindow.hpp"
 #include "ui/dialog/NpcDialogWindow.hpp"
+#include "tbeq/content/MobCatalog.hpp"
 #include "tbeq/content/ItemCatalog.hpp"
+#include "render/TextureCache.hpp"
+#include "render/SpriteRenderer.hpp"
 
 #if TBEQ_ENABLE_DEBUG_MENU
 #include "ui/debug/DebugMenu.hpp"
@@ -120,8 +123,11 @@ struct ClientApp
     asio::io_context io;
     tbeq::world::TileDefCatalog tileDefs;
     tbeq::content::ItemCatalog itemCatalog;
+    tbeq::content::MobCatalog mobCatalog;
     tbeq::render::TileStyleCatalog styleCatalog;
     tbeq::render::EntitySpriteCatalog entitySpriteCatalog;
+    std::unique_ptr<tbeq::client::TextureCache> textureCache;
+    std::unique_ptr<tbeq::client::SpriteRenderer> spriteRenderer;
     std::unique_ptr<tbeq::client::ZoneClient> zoneClient;
     std::unique_ptr<tbeq::client::TilemapRenderer> tilemapRenderer;
     std::unique_ptr<tbeq::client::EntityRenderer> entityRenderer;
@@ -129,6 +135,8 @@ struct ClientApp
     LoginSession session;
     int32_t cameraTileX = 0;
     int32_t cameraTileY = 0;
+    uint32_t minimapFrameCounter_ = 0;
+    std::vector<uint32_t> minimapColorCache_;
     std::deque<std::string> chatLines;
     tbeq::client::LocalClusterLauncher localCluster;
 
@@ -254,13 +262,22 @@ struct ClientApp
             spdlog::error("Failed to load items.json");
             return false;
         }
+        if (!mobCatalog.loadFromFile(dataRoot / "mobs.json"))
+        {
+            spdlog::error("Failed to load mobs.json");
+            return false;
+        }
+
+        textureCache = std::make_unique<tbeq::client::TextureCache>(renderer);
+        spriteRenderer = std::make_unique<tbeq::client::SpriteRenderer>(*textureCache);
 
         inventoryWindow.setItemCatalog(&itemCatalog);
         merchantWindow.setItemCatalog(&itemCatalog);
         lookWindow.setItemCatalog(&itemCatalog);
 
-        tilemapRenderer = std::make_unique<tbeq::client::TilemapRenderer>(renderer);
-        entityRenderer = std::make_unique<tbeq::client::EntityRenderer>(renderer);
+        tilemapRenderer = std::make_unique<tbeq::client::TilemapRenderer>(*spriteRenderer);
+        entityRenderer = std::make_unique<tbeq::client::EntityRenderer>(*spriteRenderer);
+        combatWindow.setSpriteRenderer(spriteRenderer.get());
 
         layoutManager.registerWindow(hudWindow);
         layoutManager.registerWindow(chatWindow);
@@ -786,6 +803,7 @@ struct ClientApp
         tilemapRenderer->setStyleCatalog(style);
         tilemapRenderer->setTileDefs(&tileDefs);
         tilemapRenderer->setZoneSnapshot(zoneSnapshot);
+        textureCache->clear();
 
         entityRenderer->clear();
         entityRenderer->setStyleCatalog(style);
@@ -798,6 +816,15 @@ struct ClientApp
             loginSession.classId,
             zoneClient->playerTileX(),
             zoneClient->playerTileY());
+
+        spriteRenderer->setStyle(style);
+        spriteRenderer->setSpriteCatalog(&entitySpriteCatalog);
+        spriteRenderer->setItemCatalog(&itemCatalog);
+        spriteRenderer->setMobCatalog(&mobCatalog);
+        spriteRenderer->setTileDefs(&tileDefs);
+
+        std::vector<std::string> mobIds = mobCatalog.allMobIds();
+        spriteRenderer->warmZone(zoneSnapshot, mobIds);
         while (auto snapshot = zoneClient->pollEntitySnapshot())
         {
             entityRenderer->applySnapshot(*snapshot);
@@ -1000,6 +1027,8 @@ struct ClientApp
 
         const uint64_t tickMs = SDL_GetTicks64();
         tilemapRenderer->updateAnimation(tickMs);
+        entityRenderer->updateAnimation(tickMs);
+        combatWindow.updateAnimation(tickMs);
 
         const int viewTilesWide = width / tbeq::render::TileGenerator::kTileSize + 2;
         const int viewTilesHigh = height / tbeq::render::TileGenerator::kTileSize + 2;
@@ -1028,6 +1057,11 @@ struct ClientApp
                 entityRenderer->applySnapshot(*snapshot);
             }
 
+#if TBEQ_ENABLE_DEBUG_MENU
+            entityRenderer->setDrawEntityOutlines(debugWindow.state().visible);
+#else
+            entityRenderer->setDrawEntityOutlines(false);
+#endif
             entityRenderer->render(cameraTileX, cameraTileY, viewTilesWide, viewTilesHigh);
         }
     }
@@ -1172,17 +1206,30 @@ struct ClientApp
                 canvasSize.y / static_cast<float>(std::max(zoneSnapshot.height, 1)));
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const ImVec2 origin = ImGui::GetCursorScreenPos();
+            const std::size_t expectedSize = static_cast<std::size_t>(zoneSnapshot.width * zoneSnapshot.height);
+            if ((minimapFrameCounter_++ % 4U) == 0U
+                || minimapColorCache_.size() != expectedSize)
+            {
+                minimapColorCache_.resize(expectedSize);
+                for (int32_t y = 0; y < zoneSnapshot.height; ++y)
+                {
+                    for (int32_t x = 0; x < zoneSnapshot.width; ++x)
+                    {
+                        const SDL_Color color = tilemapRenderer->minimapColorAt(x, y);
+                        minimapColorCache_[static_cast<std::size_t>(y * zoneSnapshot.width + x)]
+                            = IM_COL32(color.r, color.g, color.b, color.a);
+                    }
+                }
+            }
+
             for (int32_t y = 0; y < zoneSnapshot.height; ++y)
             {
                 for (int32_t x = 0; x < zoneSnapshot.width; ++x)
                 {
-                    const SDL_Color color = tilemapRenderer->minimapColorAt(x, y);
+                    const ImU32 color = minimapColorCache_[static_cast<std::size_t>(y * zoneSnapshot.width + x)];
                     const ImVec2 p0(origin.x + x * scale, origin.y + y * scale);
                     const ImVec2 p1(p0.x + scale, p0.y + scale);
-                    drawList->AddRectFilled(
-                        p0,
-                        p1,
-                        IM_COL32(color.r, color.g, color.b, color.a));
+                    drawList->AddRectFilled(p0, p1, color);
                 }
             }
 
@@ -1195,6 +1242,10 @@ struct ClientApp
                     if (dot.isLocalPlayer)
                     {
                         dotColor = IM_COL32(255, 255, 80, 255);
+                    }
+                    else if (dot.entityType == 2)
+                    {
+                        dotColor = IM_COL32(220, 80, 80, 255);
                     }
                     else if (dot.entityType != 0)
                     {

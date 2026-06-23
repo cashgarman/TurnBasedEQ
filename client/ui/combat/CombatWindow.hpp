@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 
+#include <SDL.h>
+
+#include "render/AnimationTypes.hpp"
+#include "render/SpriteRenderer.hpp"
 #include "tbeq/net/ClientPackets.hpp"
 
 namespace tbeq::ui
@@ -19,6 +23,8 @@ namespace tbeq::client
 class CombatWindow
 {
 public:
+    void setSpriteRenderer(SpriteRenderer* sprites);
+
     void reset();
     void applyStart(const net::CombatStartPayload& start);
     void applyUpdate(const net::CombatUpdatePayload& update);
@@ -26,6 +32,8 @@ public:
     void applyEnd(const net::CombatEndPayload& end);
     void applyVitals(const net::CharacterVitalsPayload& vitals);
     void applySkillGain(const net::SkillGainPayload& gain);
+
+    void updateAnimation(uint64_t tickMs);
 
     bool isActive() const { return active_; }
     uint32_t combatId() const { return combatId_; }
@@ -53,6 +61,10 @@ private:
         Ability = 5,
     };
 
+    EntitySpriteRequest spriteRequestForParticipant(const net::CombatParticipantPayload& participant) const;
+    void drawParticipantSprite(const net::CombatParticipantPayload& participant, bool isCurrentActor);
+
+    SpriteRenderer* sprites_ = nullptr;
     bool active_ = false;
     uint32_t combatId_ = 0;
     uint32_t currentActorSlot_ = 0;
@@ -70,6 +82,9 @@ private:
     std::vector<uint32_t> turnOrder_;
     std::deque<std::string> combatLog_;
     PendingAction pendingAction_ = PendingAction::None;
+    uint64_t animTickMs_ = 0;
+    uint32_t attackFlashSlot_ = 0;
+    uint64_t attackFlashUntilMs_ = 0;
 };
 
 } // namespace tbeq::client

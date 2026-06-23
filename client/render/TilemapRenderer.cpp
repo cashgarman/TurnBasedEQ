@@ -10,37 +10,26 @@ constexpr int kAnimFrameMs = 125;
 
 } // namespace
 
-TilemapRenderer::TilemapRenderer(SDL_Renderer* renderer)
-    : renderer_(renderer)
+TilemapRenderer::TilemapRenderer(SpriteRenderer& sprites)
+    : sprites_(sprites)
 {
-}
-
-TilemapRenderer::~TilemapRenderer()
-{
-    for (auto& entry : textures_)
-    {
-        SDL_DestroyTexture(entry.second);
-    }
-    textures_.clear();
 }
 
 void TilemapRenderer::setStyleCatalog(const render::TileStyleProfile* style)
 {
     style_ = style;
+    sprites_.setStyle(style);
+    sprites_.setTileDefs(tileDefs_);
 }
 
 void TilemapRenderer::setTileDefs(const world::TileDefCatalog* tileDefs)
 {
     tileDefs_ = tileDefs;
+    sprites_.setTileDefs(tileDefs);
 }
 
 void TilemapRenderer::setZoneSnapshot(const net::ZoneSnapshotPayload& snapshot)
 {
-    for (auto& entry : textures_)
-    {
-        SDL_DestroyTexture(entry.second);
-    }
-    textures_.clear();
     snapshot_ = snapshot;
 }
 
@@ -56,13 +45,17 @@ int TilemapRenderer::frameCountForTile(const std::string& tileId) const
     {
         return 1;
     }
+    if (def->frameCount > 0)
+    {
+        return def->frameCount;
+    }
     if (def->category == "water" || def->id == "portal_pad")
     {
         return 8;
     }
     if (def->animation == "cycle")
     {
-        return 4;
+        return 6;
     }
     return 1;
 }
@@ -113,45 +106,7 @@ SDL_Texture* TilemapRenderer::textureForTile(int32_t x, int32_t y)
         ? static_cast<int>((animTickMs_ / kAnimFrameMs + static_cast<uint64_t>(x + y)) % frameCount)
         : 0;
 
-    TextureKey key{tileId, autotileVariant, frameIndex};
-    const auto it = textures_.find(key);
-    if (it != textures_.end())
-    {
-        return it->second;
-    }
-
-    const auto pixels = generator_.generateFrame(
-        tileId,
-        category,
-        *style_,
-        x,
-        y,
-        autotileVariant,
-        frameIndex,
-        frameCount);
-
-    SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(
-        const_cast<uint8_t*>(pixels.data()),
-        render::TileGenerator::kTileSize,
-        render::TileGenerator::kTileSize,
-        32,
-        render::TileGenerator::kTileSize * 4,
-        0x000000FF,
-        0x0000FF00,
-        0x00FF0000,
-        0xFF000000);
-    if (surface == nullptr)
-    {
-        return nullptr;
-    }
-
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer_, surface);
-    SDL_FreeSurface(surface);
-    if (texture != nullptr)
-    {
-        textures_.emplace(key, texture);
-    }
-    return texture;
+    return sprites_.textureForTile(tileId, category, x, y, autotileVariant, frameIndex, frameCount);
 }
 
 void TilemapRenderer::render(int cameraTileX, int cameraTileY, int viewTilesWide, int viewTilesHigh)
@@ -174,7 +129,7 @@ void TilemapRenderer::render(int cameraTileX, int cameraTileY, int viewTilesWide
                 viewY * tileSize,
                 tileSize,
                 tileSize};
-            SDL_RenderCopy(renderer_, texture, nullptr, &dest);
+            SDL_RenderCopy(sprites_.cache().renderer(), texture, nullptr, &dest);
         }
     }
 }

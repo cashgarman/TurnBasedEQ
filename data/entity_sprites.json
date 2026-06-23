@@ -15,6 +15,12 @@
     "lore": {"roleColor": "#6a8fc7", "silhouette": "tall"},
     "quest": {"roleColor": "#7ab86a", "silhouette": "default"}
   },
+  "mobBodies": {
+    "forest_rat": {"silhouette": "quadruped_small", "bodyColor": "#8B6914", "scale": 0.75},
+    "forest_boar": {"silhouette": "quadruped", "bodyColor": "#6B4423", "scale": 1.1},
+    "goblin_scout": {"silhouette": "humanoid_small", "bodyColor": "#4a7a3a", "scale": 0.9},
+    "goblin_chief": {"silhouette": "humanoid_small", "bodyColor": "#2d5a28", "scale": 1.05}
+  },
   "defaults": {
     "raceId": "human",
     "classId": "warrior",
